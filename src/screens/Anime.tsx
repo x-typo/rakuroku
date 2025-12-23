@@ -41,6 +41,8 @@ export default function AnimeScreen({
 
   const handleFilterSelect = (filter: Filter) => {
     setSelectedFilter(filter);
+    setShowSearch(false);
+    setSearchQuery("");
     onCloseFilterModal?.();
   };
 

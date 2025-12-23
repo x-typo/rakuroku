@@ -41,6 +41,8 @@ export default function MangaScreen({
 
   const handleFilterSelect = (filter: Filter) => {
     setSelectedFilter(filter);
+    setShowSearch(false);
+    setSearchQuery("");
     onCloseFilterModal?.();
   };
 
