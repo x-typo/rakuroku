@@ -1,8 +1,14 @@
 import { StatusBar } from "expo-status-bar";
 import { NavigationContainer, DarkTheme } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { Ionicons } from "@expo/vector-icons";
-import { WatchingScreen, ScheduleScreen, ProfileScreen } from "./src/screens";
+import { Ionicons, FontAwesome, FontAwesome6 } from "@expo/vector-icons";
+import {
+  DiscoverScreen,
+  AnimeScreen,
+  MangaScreen,
+  ScheduleScreen,
+  ProfileScreen,
+} from "./src/screens";
 
 const Tab = createBottomTabNavigator();
 
@@ -18,15 +24,33 @@ export default function App() {
           headerStyle: { backgroundColor: "#1c1c1e" },
           headerTintColor: "#fff",
           tabBarStyle: { backgroundColor: "#1c1c1e" },
+          tabBarShowLabel: false,
         }}
       >
         <Tab.Screen
-          name="Watching"
-          component={WatchingScreen}
+          name="Discover"
+          component={DiscoverScreen}
           options={{
-            tabBarLabel: "Watching",
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="tv" size={size} color={color} />
+            tabBarIcon: ({ color }) => (
+              <FontAwesome name="search" size={24} color={color} />
+            ),
+          }}
+        />
+        <Tab.Screen
+          name="Anime"
+          component={AnimeScreen}
+          options={{
+            tabBarIcon: ({ color }) => (
+              <Ionicons name="tv" size={24} color={color} />
+            ),
+          }}
+        />
+        <Tab.Screen
+          name="Manga"
+          component={MangaScreen}
+          options={{
+            tabBarIcon: ({ color }) => (
+              <FontAwesome6 name="book-open" size={24} color={color} />
             ),
           }}
         />
@@ -34,9 +58,8 @@ export default function App() {
           name="Schedule"
           component={ScheduleScreen}
           options={{
-            tabBarLabel: "Schedule",
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="calendar" size={size} color={color} />
+            tabBarIcon: ({ color }) => (
+              <Ionicons name="calendar" size={24} color={color} />
             ),
           }}
         />
@@ -44,9 +67,8 @@ export default function App() {
           name="Profile"
           component={ProfileScreen}
           options={{
-            tabBarLabel: "Profile",
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="person" size={size} color={color} />
+            tabBarIcon: ({ color }) => (
+              <Ionicons name="person" size={24} color={color} />
             ),
           }}
         />

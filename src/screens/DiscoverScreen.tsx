@@ -1,10 +1,10 @@
 import { StyleSheet, Text, View } from "react-native";
 
-export default function WatchingScreen() {
+export default function DiscoverScreen() {
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Watching</Text>
-      <Text style={styles.subtitle}>Your anime list will appear here</Text>
+      <Text style={styles.title}>Discover</Text>
+      <Text style={styles.subtitle}>Find new anime to watch</Text>
     </View>
   );
 }
