@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import { NavigationContainer, DarkTheme } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -13,6 +14,9 @@ import {
 const Tab = createBottomTabNavigator();
 
 export default function App() {
+  const [showAnimeFilter, setShowAnimeFilter] = useState(false);
+  const [showMangaFilter, setShowMangaFilter] = useState(false);
+
   return (
     <NavigationContainer theme={DarkTheme}>
       <StatusBar style="light" />
@@ -38,22 +42,50 @@ export default function App() {
         />
         <Tab.Screen
           name="Anime"
-          component={AnimeScreen}
           options={{
             tabBarIcon: ({ color }) => (
               <Ionicons name="tv" size={24} color={color} />
             ),
           }}
-        />
+          listeners={({ navigation }) => ({
+            tabPress: (e) => {
+              if (navigation.isFocused()) {
+                e.preventDefault();
+                setShowAnimeFilter(true);
+              }
+            },
+          })}
+        >
+          {() => (
+            <AnimeScreen
+              showFilterModal={showAnimeFilter}
+              onCloseFilterModal={() => setShowAnimeFilter(false)}
+            />
+          )}
+        </Tab.Screen>
         <Tab.Screen
           name="Manga"
-          component={MangaScreen}
           options={{
             tabBarIcon: ({ color }) => (
               <FontAwesome6 name="book-open" size={24} color={color} />
             ),
           }}
-        />
+          listeners={({ navigation }) => ({
+            tabPress: (e) => {
+              if (navigation.isFocused()) {
+                e.preventDefault();
+                setShowMangaFilter(true);
+              }
+            },
+          })}
+        >
+          {() => (
+            <MangaScreen
+              showFilterModal={showMangaFilter}
+              onCloseFilterModal={() => setShowMangaFilter(false)}
+            />
+          )}
+        </Tab.Screen>
         <Tab.Screen
           name="Schedule"
           component={ScheduleScreen}
