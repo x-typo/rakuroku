@@ -12,7 +12,7 @@ export default function WatchingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: "#000",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -20,9 +20,10 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "bold",
     marginBottom: 8,
+    color: "#fff",
   },
   subtitle: {
     fontSize: 16,
-    color: "#666",
+    color: "#9CA3AF",
   },
 });
