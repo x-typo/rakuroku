@@ -1,5 +1,5 @@
-export { default as DiscoverScreen } from "./DiscoverScreen";
-export { default as AnimeScreen } from "./AnimeScreen";
-export { default as MangaScreen } from "./MangaScreen";
-export { default as ScheduleScreen } from "./ScheduleScreen";
-export { default as ProfileScreen } from "./ProfileScreen";
+export { default as DiscoverScreen } from "./Discover";
+export { default as AnimeScreen } from "./Anime";
+export { default as MangaScreen } from "./Manga";
+export { default as ScheduleScreen } from "./Schedule";
+export { default as ProfileScreen } from "./Profile";
