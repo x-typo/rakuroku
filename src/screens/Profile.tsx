@@ -121,78 +121,80 @@ export default function ProfileScreen() {
   const hoursWatched = Math.round(user.statistics.anime.minutesWatched / 60);
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => loadData(true)}
-          tintColor={colors.primary}
-        />
-      }
-    >
-      <View style={styles.avatarContainer}>
-        <Image source={{ uri: user.avatar.large }} style={styles.avatar} />
-      </View>
+    <View style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => loadData(true)}
+            tintColor={colors.primary}
+          />
+        }
+      >
+        <View style={styles.avatarContainer}>
+          <Image source={{ uri: user.avatar.large }} style={styles.avatar} />
+        </View>
 
-      <Text style={styles.username}>{user.name}</Text>
+        <Text style={styles.username}>{user.name}</Text>
 
-      <View style={styles.statsContainer}>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>{user.statistics.anime.count}</Text>
-          <Text style={styles.statLabel}>Anime</Text>
+        <View style={styles.statsContainer}>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{user.statistics.anime.count}</Text>
+            <Text style={styles.statLabel}>Anime</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{user.statistics.anime.episodesWatched}</Text>
+            <Text style={styles.statLabel}>Episodes</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{hoursWatched}</Text>
+            <Text style={styles.statLabel}>Hours</Text>
+          </View>
         </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>{user.statistics.anime.episodesWatched}</Text>
-          <Text style={styles.statLabel}>Episodes</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>{hoursWatched}</Text>
-          <Text style={styles.statLabel}>Hours</Text>
-        </View>
-      </View>
 
-      <View style={styles.statsContainer}>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>{user.statistics.manga.count}</Text>
-          <Text style={styles.statLabel}>Manga</Text>
+        <View style={styles.statsContainer}>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{user.statistics.manga.count}</Text>
+            <Text style={styles.statLabel}>Manga</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{user.statistics.manga.chaptersRead}</Text>
+            <Text style={styles.statLabel}>Chapters</Text>
+          </View>
         </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>{user.statistics.manga.chaptersRead}</Text>
-          <Text style={styles.statLabel}>Chapters</Text>
-        </View>
-      </View>
 
-      <View style={styles.activitiesSection}>
-        <Text style={styles.sectionTitle}>Recent Activity</Text>
-        {activities.length === 0 ? (
-          <Text style={styles.noActivities}>No recent activities</Text>
-        ) : (
-          activities.map((activity) => (
-            <View key={activity.id} style={styles.activityRow}>
-              <Image
-                source={{ uri: activity.media.coverImage.medium }}
-                style={styles.activityPoster}
-              />
-              <View style={styles.activityInfo}>
-                <Text style={styles.activityStatus} numberOfLines={2}>
-                  {formatActivityStatus(activity)}
+        <View style={styles.activitiesSection}>
+          <Text style={styles.sectionTitle}>Recent Activity</Text>
+          {activities.length === 0 ? (
+            <Text style={styles.noActivities}>No recent activities</Text>
+          ) : (
+            activities.map((activity) => (
+              <View key={activity.id} style={styles.activityRow}>
+                <Image
+                  source={{ uri: activity.media.coverImage.medium }}
+                  style={styles.activityPoster}
+                />
+                <View style={styles.activityInfo}>
+                  <Text style={styles.activityStatus} numberOfLines={2}>
+                    {formatActivityStatus(activity)}
+                  </Text>
+                </View>
+                <Text style={styles.activityTime}>
+                  {formatTimeAgo(activity.createdAt)}
                 </Text>
               </View>
-              <Text style={styles.activityTime}>
-                {formatTimeAgo(activity.createdAt)}
-              </Text>
-            </View>
-          ))
-        )}
-      </View>
+            ))
+          )}
+        </View>
+      </ScrollView>
+
       {refreshing && (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
       )}
-    </ScrollView>
+    </View>
   );
 }
 

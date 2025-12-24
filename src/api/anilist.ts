@@ -13,6 +13,13 @@ import {
 const ANILIST_API = "https://graphql.anilist.co";
 const USERNAME = process.env.EXPO_PUBLIC_ANILIST_USERNAME || "";
 
+function handleApiError(status: number): never {
+  if (status === 429) {
+    throw new Error("Too many requests. Please try again shortly.");
+  }
+  throw new Error(`AniList API error: ${status}`);
+}
+
 const ACTIVITY_QUERY = `
 query ($userId: Int, $page: Int, $perPage: Int) {
   Page(page: $page, perPage: $perPage) {
@@ -167,7 +174,7 @@ export async function fetchUserActivities(
   });
 
   if (!response.ok) {
-    throw new Error(`AniList API error: ${response.status}`);
+    handleApiError(response.status);
   }
 
   const json = await response.json();
@@ -195,7 +202,7 @@ export async function fetchUser(): Promise<User> {
   });
 
   if (!response.ok) {
-    throw new Error(`AniList API error: ${response.status}`);
+    handleApiError(response.status);
   }
 
   const json = await response.json();
@@ -223,7 +230,7 @@ export async function fetchMediaList(type: MediaType): Promise<MediaListEntry[]>
   });
 
   if (!response.ok) {
-    throw new Error(`AniList API error: ${response.status}`);
+    handleApiError(response.status);
   }
 
   const json = await response.json();
@@ -281,7 +288,7 @@ export async function fetchAiringSchedule(
     });
 
     if (!response.ok) {
-      throw new Error(`AniList API error: ${response.status}`);
+      handleApiError(response.status);
     }
 
     const json = await response.json();

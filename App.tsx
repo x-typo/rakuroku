@@ -2,7 +2,7 @@ import { useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import { NavigationContainer, DarkTheme } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { Ionicons, FontAwesome, FontAwesome6 } from "@expo/vector-icons";
+import { Ionicons, FontAwesome } from "@expo/vector-icons";
 import {
   DiscoverScreen,
   AnimeScreen,
@@ -72,7 +72,7 @@ export default function App() {
           name="Manga"
           options={{
             tabBarIcon: ({ color }) => (
-              <FontAwesome6 name="book-open" size={30} color={color} />
+              <Ionicons name="book" size={30} color={color} />
             ),
           }}
           listeners={({ navigation }) => ({
