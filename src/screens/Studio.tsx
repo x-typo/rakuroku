@@ -140,33 +140,31 @@ export default function StudioScreen() {
 
       return (
         <Pressable
-          style={styles.mediaItem}
+          style={styles.card}
           onPress={() => navigation.navigate("MediaDetail", { mediaId: item.id })}
         >
           <Image
             source={{ uri: item.coverImage.medium }}
             style={styles.coverImage}
           />
-          <View style={styles.mediaInfo}>
-            <Text style={styles.mediaTitle} numberOfLines={2}>
+          <View style={styles.cardInfo}>
+            <Text style={styles.cardTitle} numberOfLines={2}>
               {title}
             </Text>
-            <Text style={styles.mediaSubtitle}>
+            <Text style={styles.cardSubtitle}>
               {[format, isUnreleased ? "Unreleased" : year, episodeInfo].filter(Boolean).join(" • ")}
             </Text>
-            <View style={styles.bottomRow}>
-              {item.averageScore && !isUnreleased && (
-                <View style={styles.scoreContainer}>
-                  <Ionicons name="star" size={12} color={colors.primary} />
-                  <Text style={styles.scoreText}>{item.averageScore}%</Text>
-                </View>
-              )}
-              {statusLabel && statusColor && (
-                <Text style={[styles.statusText, { color: statusColor }]}>
-                  {statusLabel}
-                </Text>
-              )}
-            </View>
+            {item.averageScore && !isUnreleased && (
+              <View style={styles.scoreRow}>
+                <Ionicons name="star" size={14} color={colors.primary} />
+                <Text style={styles.scoreText}>{item.averageScore}%</Text>
+              </View>
+            )}
+            {statusLabel && statusColor && (
+              <Text style={[styles.statusText, { color: statusColor }]}>
+                {statusLabel}
+              </Text>
+            )}
           </View>
         </Pressable>
       );
@@ -258,57 +256,55 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: 32,
+    paddingTop: 8,
   },
   centerContent: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
   },
-  mediaItem: {
+  card: {
     flexDirection: "row",
-    padding: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.surface,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    overflow: "hidden",
   },
   coverImage: {
-    width: 60,
-    height: 85,
-    borderRadius: 4,
+    width: 80,
+    height: 120,
   },
-  mediaInfo: {
+  cardInfo: {
     flex: 1,
-    marginLeft: 12,
+    padding: 12,
     justifyContent: "center",
   },
-  mediaTitle: {
-    fontSize: 15,
+  cardTitle: {
+    fontSize: 16,
     fontWeight: "600",
     color: colors.textPrimary,
     marginBottom: 4,
   },
-  mediaSubtitle: {
+  cardSubtitle: {
     fontSize: 13,
     color: colors.textSecondary,
     marginBottom: 4,
   },
-  bottomRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  scoreContainer: {
+  scoreRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
+    marginTop: 4,
   },
   scoreText: {
-    fontSize: 12,
+    fontSize: 14,
     color: colors.textSecondary,
   },
   statusText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "600",
+    marginTop: 4,
   },
   emptyContainer: {
     padding: 32,

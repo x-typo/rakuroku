@@ -17,7 +17,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../constants";
-import { fetchMediaDetails, fetchUserMediaEntry, updateScore, UserMediaEntry } from "../api";
+import { fetchMediaDetails, fetchUserMediaEntry, updateScore, updateStatus, deleteMediaListEntry, UserMediaEntry } from "../api";
 import { MediaDetails, MediaStatus, MediaRank, Studio, MediaRelationType, MediaRelationEdge } from "../types";
 import { RootStackParamList } from "../../App";
 import { useAuth } from "../context";
@@ -223,6 +223,8 @@ export default function MediaDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [scoreModalVisible, setScoreModalVisible] = useState(false);
   const [updatingScore, setUpdatingScore] = useState(false);
+  const [statusModalVisible, setStatusModalVisible] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
 
   const loadData = useCallback(async (showRefreshing = false) => {
     if (showRefreshing) {
@@ -320,6 +322,36 @@ export default function MediaDetailScreen() {
     }
   };
 
+  const handleStatusUpdate = async (newStatus: MediaStatus) => {
+    if (!accessToken || !userEntry) return;
+
+    setUpdatingStatus(true);
+    try {
+      await updateStatus(mediaId, newStatus, accessToken);
+      setUserEntry({ ...userEntry, status: newStatus });
+      setStatusModalVisible(false);
+    } catch (err) {
+      console.error("Failed to update status:", err);
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
+  const handleDeleteEntry = async () => {
+    if (!accessToken || !userEntry) return;
+
+    setUpdatingStatus(true);
+    try {
+      await deleteMediaListEntry(userEntry.id, accessToken);
+      setUserEntry(null);
+      setStatusModalVisible(false);
+    } catch (err) {
+      console.error("Failed to delete entry:", err);
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <ScrollView
@@ -351,9 +383,17 @@ export default function MediaDetailScreen() {
               </Pressable>
             )}
             {userStatusLabel && userStatusColor && (
-              <Text style={[styles.status, { color: userStatusColor }]}>
-                {userStatusLabel}
-              </Text>
+              canEditScore ? (
+                <Pressable onPress={() => setStatusModalVisible(true)}>
+                  <Text style={[styles.status, { color: userStatusColor }]}>
+                    {userStatusLabel}
+                  </Text>
+                </Pressable>
+              ) : (
+                <Text style={[styles.status, { color: userStatusColor }]}>
+                  {userStatusLabel}
+                </Text>
+              )
             )}
             {media.nextAiringEpisode && (
               <Text style={styles.nextAiring}>
@@ -376,7 +416,6 @@ export default function MediaDetailScreen() {
               <Text style={styles.statValue}>
                 {userEntry.score > 0 ? `${userEntry.score}/10` : "Rate"}
               </Text>
-              <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
             </Pressable>
           )}
           {seasonalRank && (
@@ -530,6 +569,68 @@ export default function MediaDetailScreen() {
                 size="small"
                 color={colors.primary}
                 style={styles.scoreLoading}
+              />
+            )}
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={statusModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setStatusModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setStatusModalVisible(false)}
+        >
+          <View style={styles.statusModal}>
+            <Text style={styles.statusModalTitle}>Update Status</Text>
+            <View style={styles.statusOptions}>
+              {(
+                [
+                  { status: "CURRENT" as MediaStatus, label: media.type === "ANIME" ? "Watching" : "Reading" },
+                  { status: "COMPLETED" as MediaStatus, label: "Completed" },
+                  { status: "DROPPED" as MediaStatus, label: "Dropped" },
+                  { status: "PLANNING" as MediaStatus, label: "Planning" },
+                ] as const
+              ).map((item) => (
+                <Pressable
+                  key={item.status}
+                  style={[
+                    styles.statusOption,
+                    userEntry?.status === item.status && styles.statusOptionSelected,
+                  ]}
+                  onPress={() => handleStatusUpdate(item.status)}
+                  disabled={updatingStatus}
+                >
+                  <Text
+                    style={[
+                      styles.statusOptionText,
+                      userEntry?.status === item.status && styles.statusOptionTextSelected,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                  {userEntry?.status === item.status && (
+                    <Ionicons name="checkmark" size={20} color={colors.background} />
+                  )}
+                </Pressable>
+              ))}
+            </View>
+            <Pressable
+              style={styles.deleteButton}
+              onPress={handleDeleteEntry}
+              disabled={updatingStatus}
+            >
+              <Text style={styles.deleteButtonText}>Delete from List</Text>
+            </Pressable>
+            {updatingStatus && (
+              <ActivityIndicator
+                size="small"
+                color={colors.primary}
+                style={styles.statusLoading}
               />
             )}
           </View>
@@ -779,6 +880,58 @@ const styles = StyleSheet.create({
     color: colors.background,
   },
   scoreLoading: {
+    marginTop: 16,
+  },
+  statusModal: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 24,
+    width: "85%",
+    maxWidth: 340,
+  },
+  statusModalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: colors.textPrimary,
+    textAlign: "center",
+    marginBottom: 20,
+  },
+  statusOptions: {
+    gap: 10,
+  },
+  statusOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: colors.background,
+  },
+  statusOptionSelected: {
+    backgroundColor: colors.primary,
+  },
+  statusOptionText: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: colors.textPrimary,
+  },
+  statusOptionTextSelected: {
+    color: colors.background,
+  },
+  deleteButton: {
+    marginTop: 20,
+    paddingVertical: 14,
+    alignItems: "center",
+    borderRadius: 12,
+    backgroundColor: "rgba(239, 68, 68, 0.15)",
+  },
+  deleteButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: colors.error,
+  },
+  statusLoading: {
     marginTop: 16,
   },
 });

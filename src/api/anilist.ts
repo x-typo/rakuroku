@@ -783,6 +783,25 @@ mutation ($mediaId: Int, $score: Float) {
 }
 `;
 
+const UPDATE_STATUS_MUTATION = `
+mutation ($mediaId: Int, $status: MediaListStatus) {
+  SaveMediaListEntry(mediaId: $mediaId, status: $status) {
+    id
+    status
+    score
+    progress
+  }
+}
+`;
+
+const DELETE_ENTRY_MUTATION = `
+mutation ($id: Int) {
+  DeleteMediaListEntry(id: $id) {
+    deleted
+  }
+}
+`;
+
 export interface UpdateProgressResult {
   id: number;
   progress: number;
@@ -859,6 +878,77 @@ export async function updateScore(
   }
 
   return json.data.SaveMediaListEntry;
+}
+
+export interface UpdateStatusResult {
+  id: number;
+  status: MediaStatus;
+  score: number;
+  progress: number;
+}
+
+export async function updateStatus(
+  mediaId: number,
+  status: MediaStatus,
+  accessToken: string
+): Promise<UpdateStatusResult> {
+  const response = await fetch(ANILIST_API, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      query: UPDATE_STATUS_MUTATION,
+      variables: {
+        mediaId,
+        status,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    handleApiError(response.status);
+  }
+
+  const json = await response.json();
+
+  if (json.errors) {
+    throw new Error(json.errors[0]?.message || "Failed to update status");
+  }
+
+  return json.data.SaveMediaListEntry;
+}
+
+export async function deleteMediaListEntry(
+  entryId: number,
+  accessToken: string
+): Promise<boolean> {
+  const response = await fetch(ANILIST_API, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      query: DELETE_ENTRY_MUTATION,
+      variables: {
+        id: entryId,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    handleApiError(response.status);
+  }
+
+  const json = await response.json();
+
+  if (json.errors) {
+    throw new Error(json.errors[0]?.message || "Failed to delete entry");
+  }
+
+  return json.data.DeleteMediaListEntry.deleted;
 }
 
 const SEARCH_MEDIA_QUERY = `
