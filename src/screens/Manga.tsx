@@ -92,8 +92,8 @@ export default function MangaScreen({
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={renderEmpty}
-        keyboardShouldPersistTaps="always"
-        keyboardDismissMode="none"
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
         onScroll={handleScroll}
         scrollEventThrottle={16}
         refreshControl={
