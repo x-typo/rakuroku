@@ -1,18 +1,25 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   StyleSheet,
   Text,
   View,
   TextInput,
-  Keyboard,
   Modal,
   TouchableOpacity,
   Pressable,
-  ScrollView,
+  FlatList,
   RefreshControl,
+  Image,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
+import {
+  fetchMediaList,
+  filterByStatus,
+  searchEntries,
+  MediaListEntry,
+} from "../api";
 
 const FILTERS = ["All", "Watching", "Completed", "Dropped", "Planning"] as const;
 type Filter = (typeof FILTERS)[number];
@@ -30,7 +37,27 @@ export default function AnimeScreen({
   const [selectedFilter, setSelectedFilter] = useState<Filter>("All");
   const [showSearch, setShowSearch] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [entries, setEntries] = useState<MediaListEntry[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const isFocused = useIsFocused();
+
+  const loadData = useCallback(async () => {
+    try {
+      setError(null);
+      const data = await fetchMediaList("ANIME");
+      setEntries(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load data");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   useEffect(() => {
     if (!isFocused) {
@@ -48,29 +75,106 @@ export default function AnimeScreen({
 
   const handleRefresh = () => {
     setRefreshing(true);
-    // TODO: Fetch data from AniList API
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 500);
+    loadData();
   };
 
   const handleScroll = (event: { nativeEvent: { contentOffset: { y: number } } }) => {
     const offsetY = event.nativeEvent.contentOffset.y;
-    // Show search when pulling down (negative offset) past threshold
     if (offsetY < -50 && !showSearch) {
       setShowSearch(true);
     }
   };
 
-  return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>{selectedFilter}</Text>
-      </View>
+  const filteredEntries = useMemo(
+    () => searchEntries(filterByStatus(entries, selectedFilter), searchQuery),
+    [entries, selectedFilter, searchQuery]
+  );
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        alwaysBounceVertical={true}
+  const getProgressText = (entry: MediaListEntry) => {
+    const total = entry.media.episodes;
+    if (total) {
+      return `${entry.progress}/${total}`;
+    }
+    return `${entry.progress}`;
+  };
+
+  const renderItem = useCallback(
+    ({ item }: { item: MediaListEntry }) => (
+      <View style={styles.entryCard}>
+        <Image
+          source={{ uri: item.media.coverImage.medium }}
+          style={styles.coverImage}
+        />
+        <View style={styles.entryInfo}>
+          <Text style={styles.entryTitle} numberOfLines={2}>
+            {item.media.title.english || item.media.title.romaji}
+          </Text>
+          <Text style={styles.entryProgress}>{getProgressText(item)}</Text>
+        </View>
+      </View>
+    ),
+    []
+  );
+
+  const renderHeader = () => {
+    if (!showSearch) return null;
+    return (
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchBar}
+          placeholder="Search"
+          placeholderTextColor="#9CA3AF"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          autoFocus
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity
+            style={styles.clearButton}
+            onPress={() => setSearchQuery("")}
+          >
+            <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
+
+  const renderEmpty = () => (
+    <View style={styles.centered}>
+      <Text style={styles.emptyText}>
+        {searchQuery ? "No results found" : "No anime in this list"}
+      </Text>
+    </View>
+  );
+
+  const renderContent = () => {
+    if (loading) {
+      return (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color="#3B82F6" />
+        </View>
+      );
+    }
+
+    if (error) {
+      return (
+        <View style={styles.centered}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadData}>
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return (
+      <FlatList
+        data={filteredEntries}
+        renderItem={renderItem}
+        keyExtractor={(item) => item.id.toString()}
+        ListHeaderComponent={renderHeader}
+        ListEmptyComponent={renderEmpty}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         onScroll={handleScroll}
@@ -82,31 +186,17 @@ export default function AnimeScreen({
             tintColor="#3B82F6"
           />
         }
-      >
-        {showSearch && (
-          <View style={styles.searchContainer}>
-            <TextInput
-              style={styles.searchBar}
-              placeholder="Search"
-              placeholderTextColor="#9CA3AF"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              autoFocus
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity
-                style={styles.clearButton}
-                onPress={() => setSearchQuery("")}
-              >
-                <Ionicons name="close-circle" size={20} color="#9CA3AF" />
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-        <Pressable style={styles.content} onPress={Keyboard.dismiss}>
-          <Text style={styles.emptyText}>Your anime list will appear here</Text>
-        </Pressable>
-      </ScrollView>
+      />
+    );
+  };
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>{selectedFilter}</Text>
+      </View>
+
+      {renderContent()}
 
       <Modal
         visible={showFilterModal}
@@ -184,11 +274,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     justifyContent: "center",
   },
-  scrollContent: {
-    flexGrow: 1,
-    minHeight: "100%",
-  },
-  content: {
+  centered: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -196,6 +282,49 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
+    color: "#9CA3AF",
+  },
+  errorText: {
+    fontSize: 16,
+    color: "#EF4444",
+    marginBottom: 16,
+  },
+  retryButton: {
+    backgroundColor: "#3B82F6",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  entryCard: {
+    flexDirection: "row",
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#1c1c1e",
+  },
+  coverImage: {
+    width: 60,
+    height: 85,
+    borderRadius: 6,
+    backgroundColor: "#1c1c1e",
+  },
+  entryInfo: {
+    flex: 1,
+    marginLeft: 12,
+    justifyContent: "center",
+  },
+  entryTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#fff",
+    marginBottom: 4,
+  },
+  entryProgress: {
+    fontSize: 14,
     color: "#9CA3AF",
   },
   modalOverlay: {
