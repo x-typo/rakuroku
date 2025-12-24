@@ -170,7 +170,7 @@ function formatNextAiring(airingAt: number, episode: number): string {
     timeText = `${minutes}m`;
   }
 
-  return `Ep ${episode} airing in ${timeText}`;
+  return `Episode ${episode} airing in ${timeText}`;
 }
 
 function stripHtmlTags(text: string): string {
@@ -315,7 +315,7 @@ export default function MediaDetailScreen() {
         <View style={styles.statsRow}>
           {media.averageScore && (
             <View style={styles.statItem}>
-              <Ionicons name="star" size={16} color={colors.primary} />
+              <Ionicons name="bar-chart" size={16} color={colors.primary} />
               <Text style={styles.statValue}>{media.averageScore}%</Text>
             </View>
           )}
@@ -325,24 +325,6 @@ export default function MediaDetailScreen() {
               <Text style={styles.statValue}>
                 #{seasonalRank.rank} {formatSeasonName(seasonalRank.season!)} {seasonalRank.year}
               </Text>
-            </View>
-          )}
-          {media.type === "ANIME" && media.episodes && (
-            <View style={styles.statItem}>
-              <Ionicons name="tv" size={16} color={colors.textSecondary} />
-              <Text style={styles.statValue}>{media.episodes} eps</Text>
-            </View>
-          )}
-          {media.type === "MANGA" && media.chapters && (
-            <View style={styles.statItem}>
-              <Ionicons name="book" size={16} color={colors.textSecondary} />
-              <Text style={styles.statValue}>{media.chapters} chs</Text>
-            </View>
-          )}
-          {media.type === "MANGA" && media.volumes && (
-            <View style={styles.statItem}>
-              <Ionicons name="library" size={16} color={colors.textSecondary} />
-              <Text style={styles.statValue}>{media.volumes} vols</Text>
             </View>
           )}
         </View>
@@ -362,6 +344,24 @@ export default function MediaDetailScreen() {
             <Text style={styles.infoLabel}>Format</Text>
             <Text style={styles.infoValue}>{formatFormat(media.format)}</Text>
           </View>
+          {media.type === "ANIME" && media.episodes && (
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Episodes</Text>
+              <Text style={styles.infoValue}>{media.episodes}</Text>
+            </View>
+          )}
+          {media.type === "MANGA" && media.chapters && (
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Chapters</Text>
+              <Text style={styles.infoValue}>{media.chapters}</Text>
+            </View>
+          )}
+          {media.type === "MANGA" && media.volumes && (
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Volumes</Text>
+              <Text style={styles.infoValue}>{media.volumes}</Text>
+            </View>
+          )}
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Status</Text>
             <Text style={styles.infoValue}>{formatStatus(media.status)}</Text>

@@ -72,13 +72,13 @@ export function MediaCard({ entry, type }: MediaCardProps) {
             <Text style={styles.progress}>{getProgressText()}</Text>
             {episodesBehind > 0 && (
               <Text style={styles.behind}>
-                {episodesBehind} ep behind
+                {episodesBehind} {episodesBehind === 1 ? "episode" : "episodes"} behind
               </Text>
             )}
           </View>
           {nextAiring && type === "ANIME" && (
             <Text style={styles.nextAiring}>
-              Ep {nextAiring.episode} in {formatNextAiring(nextAiring.airingAt)}
+              Episode {nextAiring.episode} airing in {formatNextAiring(nextAiring.airingAt)}
             </Text>
           )}
           {getScoreText() && (
@@ -143,7 +143,7 @@ const styles = StyleSheet.create({
   },
   nextAiring: {
     fontSize: 13,
-    color: colors.primary,
+    color: colors.warning,
     marginTop: 4,
   },
   progressBarContainer: {
