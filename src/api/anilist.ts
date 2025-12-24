@@ -280,12 +280,49 @@ export async function fetchMediaDetails(id: number): Promise<MediaDetails> {
 const USER_MEDIA_STATUS_QUERY = `
 query ($userName: String, $mediaId: Int) {
   MediaList(userName: $userName, mediaId: $mediaId) {
+    id
     status
     score
     progress
   }
 }
 `;
+
+export interface UserMediaEntry {
+  id: number;
+  status: MediaStatus;
+  score: number;
+  progress: number;
+}
+
+export async function fetchUserMediaEntry(mediaId: number): Promise<UserMediaEntry | null> {
+  try {
+    const response = await fetch(ANILIST_API, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query: USER_MEDIA_STATUS_QUERY,
+        variables: { userName: USERNAME, mediaId },
+      }),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const json = await response.json();
+
+    if (json.errors || !json.data.MediaList) {
+      return null;
+    }
+
+    return json.data.MediaList;
+  } catch {
+    return null;
+  }
+}
 
 export async function fetchUserMediaStatus(mediaId: number): Promise<MediaStatus | null> {
   try {
@@ -724,6 +761,104 @@ export async function fetchSeasonalAnime(
     hasNextPage: json.data.Page.pageInfo.hasNextPage,
     currentPage: json.data.Page.pageInfo.currentPage,
   };
+}
+
+const UPDATE_PROGRESS_MUTATION = `
+mutation ($mediaId: Int, $progress: Int) {
+  SaveMediaListEntry(mediaId: $mediaId, progress: $progress) {
+    id
+    progress
+    status
+  }
+}
+`;
+
+const UPDATE_SCORE_MUTATION = `
+mutation ($mediaId: Int, $score: Float) {
+  SaveMediaListEntry(mediaId: $mediaId, score: $score) {
+    id
+    score
+    status
+  }
+}
+`;
+
+export interface UpdateProgressResult {
+  id: number;
+  progress: number;
+  status: MediaStatus;
+}
+
+export async function updateProgress(
+  mediaId: number,
+  progress: number,
+  accessToken: string
+): Promise<UpdateProgressResult> {
+  const response = await fetch(ANILIST_API, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      query: UPDATE_PROGRESS_MUTATION,
+      variables: {
+        mediaId,
+        progress,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    handleApiError(response.status);
+  }
+
+  const json = await response.json();
+
+  if (json.errors) {
+    throw new Error(json.errors[0]?.message || "Failed to update progress");
+  }
+
+  return json.data.SaveMediaListEntry;
+}
+
+export interface UpdateScoreResult {
+  id: number;
+  score: number;
+  status: MediaStatus;
+}
+
+export async function updateScore(
+  mediaId: number,
+  score: number,
+  accessToken: string
+): Promise<UpdateScoreResult> {
+  const response = await fetch(ANILIST_API, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      query: UPDATE_SCORE_MUTATION,
+      variables: {
+        mediaId,
+        score,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    handleApiError(response.status);
+  }
+
+  const json = await response.json();
+
+  if (json.errors) {
+    throw new Error(json.errors[0]?.message || "Failed to update score");
+  }
+
+  return json.data.SaveMediaListEntry;
 }
 
 const SEARCH_MEDIA_QUERY = `

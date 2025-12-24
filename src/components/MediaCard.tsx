@@ -1,8 +1,12 @@
-import { StyleSheet, Text, View, Image, Pressable, Keyboard } from "react-native";
+import { useState } from "react";
+import { StyleSheet, Text, View, Image, Pressable, Keyboard, ActivityIndicator } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../constants";
 import { MediaListEntry } from "../types";
+import { updateProgress } from "../api";
+import { useAuth } from "../context";
 import { RootStackParamList } from "../../App";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -10,6 +14,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 interface MediaCardProps {
   entry: MediaListEntry;
   type: "ANIME" | "MANGA";
+  onProgressUpdate?: (entryId: number, newProgress: number) => void;
 }
 
 function formatNextAiring(airingAt: number): string {
@@ -22,20 +27,25 @@ function formatNextAiring(airingAt: number): string {
   return `${Math.floor(diff / 86400)}d`;
 }
 
-export function MediaCard({ entry, type }: MediaCardProps) {
+export function MediaCard({ entry, type, onProgressUpdate }: MediaCardProps) {
   const navigation = useNavigation<NavigationProp>();
+  const { accessToken, isAuthenticated } = useAuth();
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [localProgress, setLocalProgress] = useState(entry.progress);
+
   const total = type === "ANIME" ? entry.media.episodes : entry.media.chapters;
-  const progressPercent = total ? (entry.progress / total) * 100 : 0;
+  const progressPercent = total ? (localProgress / total) * 100 : 0;
   const showProgressBar = total && total > 0;
+  const canIncrement = !total || localProgress < total;
 
   const nextAiring = entry.media.nextAiringEpisode;
-  const episodesBehind = nextAiring ? nextAiring.episode - 1 - entry.progress : 0;
+  const episodesBehind = nextAiring ? nextAiring.episode - 1 - localProgress : 0;
 
   const getProgressText = () => {
     if (total) {
-      return `${entry.progress}/${total}`;
+      return `${localProgress}/${total}`;
     }
-    return `${entry.progress}`;
+    return `${localProgress}`;
   };
 
   const getScoreColor = () => {
@@ -49,6 +59,24 @@ export function MediaCard({ entry, type }: MediaCardProps) {
       return `★ ${entry.score}`;
     }
     return null;
+  };
+
+  const handleIncrement = async () => {
+    if (!isAuthenticated || !accessToken || isUpdating || !canIncrement) return;
+
+    const newProgress = localProgress + 1;
+    setIsUpdating(true);
+    setLocalProgress(newProgress);
+
+    try {
+      await updateProgress(entry.media.id, newProgress, accessToken);
+      onProgressUpdate?.(entry.id, newProgress);
+    } catch (error) {
+      // Revert on failure
+      setLocalProgress(localProgress);
+    } finally {
+      setIsUpdating(false);
+    }
   };
 
   return (
@@ -85,6 +113,22 @@ export function MediaCard({ entry, type }: MediaCardProps) {
             <Text style={[styles.score, { color: getScoreColor() }]}>{getScoreText()}</Text>
           )}
         </View>
+        {isAuthenticated && canIncrement && (
+          <Pressable
+            style={styles.incrementButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              handleIncrement();
+            }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            {isUpdating ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Ionicons name="add-circle" size={32} color={colors.primary} />
+            )}
+          </Pressable>
+        )}
       </View>
       {showProgressBar && (
         <View style={styles.progressBarContainer}>
@@ -153,5 +197,10 @@ const styles = StyleSheet.create({
   progressBar: {
     height: "100%",
     backgroundColor: colors.primary,
+  },
+  incrementButton: {
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 12,
   },
 });

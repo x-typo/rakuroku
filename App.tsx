@@ -14,6 +14,7 @@ import {
   SeasonListScreen,
 } from "./src/screens";
 import { colors } from "./src/constants";
+import { AuthProvider } from "./src/context";
 
 import { Season } from "./src/types";
 
@@ -35,9 +36,10 @@ export default function App() {
   const [showMangaFilter, setShowMangaFilter] = useState(false);
 
   return (
-    <NavigationContainer theme={DarkTheme}>
-      <StatusBar style="light" />
-      <Tab.Navigator
+    <AuthProvider>
+      <NavigationContainer theme={DarkTheme}>
+        <StatusBar style="light" />
+        <Tab.Navigator
         screenOptions={{
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textSecondary,
@@ -152,7 +154,8 @@ export default function App() {
             headerShown: false,
           }}
         />
-      </Tab.Navigator>
-    </NavigationContainer>
+        </Tab.Navigator>
+      </NavigationContainer>
+    </AuthProvider>
   );
 }

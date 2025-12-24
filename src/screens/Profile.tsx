@@ -12,9 +12,11 @@ import {
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../constants";
 import { fetchUser, fetchUserActivities } from "../api";
 import { User, ListActivity } from "../types";
+import { useAuth } from "../context";
 import { RootStackParamList } from "../../App";
 
 function formatTimeAgo(timestamp: number): string {
@@ -66,6 +68,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function ProfileScreen() {
   const navigation = useNavigation<NavigationProp>();
+  const { isAuthenticated, isLoading: authLoading, login, logout } = useAuth();
   const [user, setUser] = useState<User | null>(null);
   const [activities, setActivities] = useState<ListActivity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -169,6 +172,22 @@ export default function ProfileScreen() {
             <Text style={styles.statValue}>{user.statistics.manga.chaptersRead}</Text>
             <Text style={styles.statLabel}>Chapters</Text>
           </View>
+        </View>
+
+        <View style={styles.authSection}>
+          {authLoading ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : isAuthenticated ? (
+            <Pressable style={styles.authButton} onPress={logout}>
+              <Ionicons name="log-out-outline" size={20} color={colors.textPrimary} />
+              <Text style={styles.authButtonText}>Sign Out</Text>
+            </Pressable>
+          ) : (
+            <Pressable style={[styles.authButton, styles.authButtonPrimary]} onPress={login}>
+              <Ionicons name="log-in-outline" size={20} color={colors.textPrimary} />
+              <Text style={styles.authButtonText}>Sign in with AniList</Text>
+            </Pressable>
+          )}
         </View>
 
         <View style={styles.activitiesSection}>
@@ -327,5 +346,29 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.5)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  authSection: {
+    width: "100%",
+    paddingHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 8,
+    alignItems: "center",
+  },
+  authButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  authButtonPrimary: {
+    backgroundColor: colors.primary,
+  },
+  authButtonText: {
+    color: colors.textPrimary,
+    fontSize: 16,
+    fontWeight: "600",
   },
 });

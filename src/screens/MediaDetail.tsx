@@ -10,15 +10,17 @@ import {
   Dimensions,
   Pressable,
   Share,
+  Modal,
 } from "react-native";
 import { RouteProp, useRoute, useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../constants";
-import { fetchMediaDetails, fetchUserMediaStatus } from "../api";
+import { fetchMediaDetails, fetchUserMediaEntry, updateScore, UserMediaEntry } from "../api";
 import { MediaDetails, MediaStatus, MediaRank, Studio, MediaRelationType, MediaRelationEdge } from "../types";
 import { RootStackParamList } from "../../App";
+import { useAuth } from "../context";
 
 type MediaDetailRouteProp = RouteProp<RootStackParamList, "MediaDetail">;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -212,12 +214,15 @@ export default function MediaDetailScreen() {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const { mediaId } = route.params;
+  const { isAuthenticated, accessToken } = useAuth();
 
   const [media, setMedia] = useState<MediaDetails | null>(null);
-  const [userStatus, setUserStatus] = useState<MediaStatus | null>(null);
+  const [userEntry, setUserEntry] = useState<UserMediaEntry | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [scoreModalVisible, setScoreModalVisible] = useState(false);
+  const [updatingScore, setUpdatingScore] = useState(false);
 
   const loadData = useCallback(async (showRefreshing = false) => {
     if (showRefreshing) {
@@ -228,12 +233,12 @@ export default function MediaDetailScreen() {
     setError(null);
 
     try {
-      const [data, status] = await Promise.all([
+      const [data, entry] = await Promise.all([
         fetchMediaDetails(mediaId),
-        fetchUserMediaStatus(mediaId),
+        fetchUserMediaEntry(mediaId),
       ]);
       setMedia(data);
-      setUserStatus(status);
+      setUserEntry(entry);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load media details");
     } finally {
@@ -284,9 +289,11 @@ export default function MediaDetailScreen() {
   const title = media.title.english || media.title.romaji;
   const studio = getMainStudio();
   const seasonText = formatSeason(media.season, media.seasonYear);
+  const userStatus = userEntry?.status || null;
   const userStatusLabel = getUserStatusLabel(userStatus);
   const userStatusColor = getUserStatusColor(userStatus);
   const seasonalRank = getSeasonalRank(media.rankings, media.season, media.seasonYear);
+  const canEditScore = isAuthenticated && userEntry !== null;
 
   const handleShare = async () => {
     try {
@@ -295,6 +302,21 @@ export default function MediaDetailScreen() {
       });
     } catch (error) {
       // Share cancelled or failed
+    }
+  };
+
+  const handleScoreUpdate = async (newScore: number) => {
+    if (!accessToken || !userEntry) return;
+
+    setUpdatingScore(true);
+    try {
+      await updateScore(mediaId, newScore, accessToken);
+      setUserEntry({ ...userEntry, score: newScore });
+      setScoreModalVisible(false);
+    } catch (err) {
+      console.error("Failed to update score:", err);
+    } finally {
+      setUpdatingScore(false);
     }
   };
 
@@ -347,6 +369,15 @@ export default function MediaDetailScreen() {
               <Ionicons name="bar-chart" size={16} color={colors.primary} />
               <Text style={styles.statValue}>{media.averageScore}%</Text>
             </View>
+          )}
+          {canEditScore && (
+            <Pressable style={styles.statItem} onPress={() => setScoreModalVisible(true)}>
+              <Ionicons name="star" size={16} color={colors.warning} />
+              <Text style={styles.statValue}>
+                {userEntry.score > 0 ? `${userEntry.score}/10` : "Rate"}
+              </Text>
+              <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
+            </Pressable>
           )}
           {seasonalRank && (
             <View style={styles.statItem}>
@@ -459,6 +490,51 @@ export default function MediaDetailScreen() {
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
       )}
+
+      <Modal
+        visible={scoreModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setScoreModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setScoreModalVisible(false)}
+        >
+          <View style={styles.scoreModal}>
+            <Text style={styles.scoreModalTitle}>Rate this {media.type === "ANIME" ? "anime" : "manga"}</Text>
+            <View style={styles.scoreOptions}>
+              {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((score) => (
+                <Pressable
+                  key={score}
+                  style={[
+                    styles.scoreOption,
+                    userEntry?.score === score && styles.scoreOptionSelected,
+                  ]}
+                  onPress={() => handleScoreUpdate(score)}
+                  disabled={updatingScore}
+                >
+                  <Text
+                    style={[
+                      styles.scoreOptionText,
+                      userEntry?.score === score && styles.scoreOptionTextSelected,
+                    ]}
+                  >
+                    {score === 0 ? "−" : score}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            {updatingScore && (
+              <ActivityIndicator
+                size="small"
+                color={colors.primary}
+                style={styles.scoreLoading}
+              />
+            )}
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -656,5 +732,53 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textPrimary,
     marginTop: 2,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  scoreModal: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 24,
+    width: "85%",
+    maxWidth: 340,
+  },
+  scoreModalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: colors.textPrimary,
+    textAlign: "center",
+    marginBottom: 20,
+  },
+  scoreOptions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 10,
+  },
+  scoreOption: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.background,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  scoreOptionSelected: {
+    backgroundColor: colors.primary,
+  },
+  scoreOptionText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: colors.textPrimary,
+  },
+  scoreOptionTextSelected: {
+    color: colors.background,
+  },
+  scoreLoading: {
+    marginTop: 16,
   },
 });
