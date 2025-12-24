@@ -34,7 +34,7 @@ export default function AnimeScreen({
   onCloseFilterModal,
 }: AnimeScreenProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedFilter, setSelectedFilter] = useState<Filter>("All");
+  const [selectedFilter, setSelectedFilter] = useState<Filter>("Watching");
   const [showSearch, setShowSearch] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -63,6 +63,7 @@ export default function AnimeScreen({
     if (!isFocused) {
       setShowSearch(false);
       setSearchQuery("");
+      setSelectedFilter("Watching");
     }
   }, [isFocused]);
 

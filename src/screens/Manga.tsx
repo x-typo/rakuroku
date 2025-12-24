@@ -34,7 +34,7 @@ export default function MangaScreen({
   onCloseFilterModal,
 }: MangaScreenProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedFilter, setSelectedFilter] = useState<Filter>("All");
+  const [selectedFilter, setSelectedFilter] = useState<Filter>("Reading");
   const [showSearch, setShowSearch] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -63,6 +63,7 @@ export default function MangaScreen({
     if (!isFocused) {
       setShowSearch(false);
       setSearchQuery("");
+      setSelectedFilter("Reading");
     }
   }, [isFocused]);
 
