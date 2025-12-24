@@ -7,14 +7,15 @@ import {
   ScrollView,
   RefreshControl,
   ActivityIndicator,
-  TouchableOpacity,
   Dimensions,
+  Pressable,
 } from "react-native";
-import { RouteProp, useRoute, useNavigation } from "@react-navigation/native";
+import { RouteProp, useRoute } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../constants";
-import { fetchMediaDetails } from "../api";
-import { MediaDetails } from "../types";
+import { fetchMediaDetails, fetchUserMediaStatus } from "../api";
+import { MediaDetails, MediaStatus, MediaRank } from "../types";
 
 type MediaDetailRouteProp = RouteProp<
   { MediaDetail: { mediaId: number } },
@@ -93,12 +94,106 @@ function formatSeason(season: string | null, year: number | null): string {
   return `${seasonMap[season] || season} ${year}`;
 }
 
+function getSeasonalRank(rankings: MediaRank[], season: string | null, year: number | null): MediaRank | null {
+  if (!season || !year || !rankings) return null;
+  // Find the ranking that matches the season and year (rated type preferred)
+  return rankings.find(
+    (r) => r.season === season && r.year === year && r.type === "RATED"
+  ) || rankings.find(
+    (r) => r.season === season && r.year === year && r.type === "POPULAR"
+  ) || null;
+}
+
+function formatSeasonName(season: string): string {
+  const seasonMap: Record<string, string> = {
+    WINTER: "Winter",
+    SPRING: "Spring",
+    SUMMER: "Summer",
+    FALL: "Fall",
+  };
+  return seasonMap[season] || season;
+}
+
+function getUserStatusColor(status: MediaStatus | null): string | null {
+  switch (status) {
+    case "CURRENT":
+      return colors.watching;
+    case "COMPLETED":
+      return colors.completed;
+    case "DROPPED":
+      return colors.dropped;
+    case "PAUSED":
+      return colors.warning;
+    case "PLANNING":
+      return colors.textSecondary;
+    default:
+      return null;
+  }
+}
+
+function getUserStatusLabel(status: MediaStatus | null): string | null {
+  switch (status) {
+    case "CURRENT":
+      return "Watching";
+    case "COMPLETED":
+      return "Completed";
+    case "DROPPED":
+      return "Dropped";
+    case "PAUSED":
+      return "Paused";
+    case "PLANNING":
+      return "Planning";
+    case "REPEATING":
+      return "Rewatching";
+    default:
+      return null;
+  }
+}
+
+function formatNextAiring(airingAt: number, episode: number): string {
+  const date = new Date(airingAt * 1000);
+  const now = Date.now();
+  const diff = airingAt * 1000 - now;
+
+  if (diff < 0) return "";
+
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+
+  let timeText = "";
+  if (days > 0) {
+    timeText = `${days}d ${hours}h`;
+  } else if (hours > 0) {
+    timeText = `${hours}h`;
+  } else {
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    timeText = `${minutes}m`;
+  }
+
+  return `Ep ${episode} airing in ${timeText}`;
+}
+
+function stripHtmlTags(text: string): string {
+  return text
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export default function MediaDetailScreen() {
   const route = useRoute<MediaDetailRouteProp>();
-  const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const { mediaId } = route.params;
 
   const [media, setMedia] = useState<MediaDetails | null>(null);
+  const [userStatus, setUserStatus] = useState<MediaStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -112,8 +207,12 @@ export default function MediaDetailScreen() {
     setError(null);
 
     try {
-      const data = await fetchMediaDetails(mediaId);
+      const [data, status] = await Promise.all([
+        fetchMediaDetails(mediaId),
+        fetchUserMediaStatus(mediaId),
+      ]);
       setMedia(data);
+      setUserStatus(status);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load media details");
     } finally {
@@ -144,9 +243,9 @@ export default function MediaDetailScreen() {
     return (
       <View style={styles.centerContainer}>
         <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={() => loadData()}>
+        <Pressable style={styles.retryButton} onPress={() => loadData()}>
           <Text style={styles.retryText}>Retry</Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
     );
   }
@@ -162,6 +261,9 @@ export default function MediaDetailScreen() {
   const title = media.title.english || media.title.romaji;
   const studio = getMainStudio();
   const seasonText = formatSeason(media.season, media.seasonYear);
+  const userStatusLabel = getUserStatusLabel(userStatus);
+  const userStatusColor = getUserStatusColor(userStatus);
+  const seasonalRank = getSeasonalRank(media.rankings, media.season, media.seasonYear);
 
   return (
     <View style={styles.container}>
@@ -175,6 +277,7 @@ export default function MediaDetailScreen() {
           />
         }
       >
+        <View style={{ height: insets.top }} />
         {media.bannerImage ? (
           <Image source={{ uri: media.bannerImage }} style={styles.bannerImage} />
         ) : (
@@ -187,13 +290,18 @@ export default function MediaDetailScreen() {
             <Text style={styles.title} numberOfLines={3}>
               {title}
             </Text>
-            {media.title.romaji && media.title.english && (
-              <Text style={styles.altTitle} numberOfLines={2}>
-                {media.title.romaji}
-              </Text>
-            )}
             {studio && <Text style={styles.studio}>{studio}</Text>}
             {seasonText && <Text style={styles.season}>{seasonText}</Text>}
+            {userStatusLabel && userStatusColor && (
+              <Text style={[styles.status, { color: userStatusColor }]}>
+                {userStatusLabel}
+              </Text>
+            )}
+            {media.nextAiringEpisode && (
+              <Text style={styles.nextAiring}>
+                {formatNextAiring(media.nextAiringEpisode.airingAt, media.nextAiringEpisode.episode)}
+              </Text>
+            )}
           </View>
         </View>
 
@@ -204,10 +312,12 @@ export default function MediaDetailScreen() {
               <Text style={styles.statValue}>{media.averageScore}%</Text>
             </View>
           )}
-          {media.popularity && (
+          {seasonalRank && (
             <View style={styles.statItem}>
-              <Ionicons name="heart" size={16} color="#ff6b6b" />
-              <Text style={styles.statValue}>{media.popularity.toLocaleString()}</Text>
+              <Ionicons name="trophy" size={16} color="#FFD700" />
+              <Text style={styles.statValue}>
+                #{seasonalRank.rank} {formatSeasonName(seasonalRank.season!)} {seasonalRank.year}
+              </Text>
             </View>
           )}
           {media.type === "ANIME" && media.episodes && (
@@ -222,10 +332,10 @@ export default function MediaDetailScreen() {
               <Text style={styles.statValue}>{media.chapters} chs</Text>
             </View>
           )}
-          {media.duration && (
+          {media.type === "MANGA" && media.volumes && (
             <View style={styles.statItem}>
-              <Ionicons name="time" size={16} color={colors.textSecondary} />
-              <Text style={styles.statValue}>{media.duration} min</Text>
+              <Ionicons name="library" size={16} color={colors.textSecondary} />
+              <Text style={styles.statValue}>{media.volumes} vols</Text>
             </View>
           )}
         </View>
@@ -259,26 +369,15 @@ export default function MediaDetailScreen() {
               <Text style={styles.infoValue}>{formatDate(media.endDate)}</Text>
             </View>
           )}
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Source</Text>
-            <Text style={styles.infoValue}>{formatSource(media.source)}</Text>
-          </View>
         </View>
 
         {media.description && (
           <View style={styles.descriptionSection}>
             <Text style={styles.sectionTitle}>Synopsis</Text>
-            <Text style={styles.description}>{media.description}</Text>
+            <Text style={styles.description}>{stripHtmlTags(media.description)}</Text>
           </View>
         )}
       </ScrollView>
-
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={() => navigation.goBack()}
-      >
-        <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-      </TouchableOpacity>
 
       {refreshing && (
         <View style={styles.loadingOverlay}>
@@ -346,6 +445,16 @@ const styles = StyleSheet.create({
   season: {
     fontSize: 13,
     color: colors.textSecondary,
+  },
+  status: {
+    fontSize: 13,
+    fontWeight: "600",
+    marginTop: 4,
+  },
+  nextAiring: {
+    fontSize: 13,
+    color: colors.warning,
+    marginTop: 4,
   },
   statsRow: {
     flexDirection: "row",
@@ -417,17 +526,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     lineHeight: 22,
-  },
-  backButton: {
-    position: "absolute",
-    top: 50,
-    left: 16,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    alignItems: "center",
-    justifyContent: "center",
   },
   subtitle: {
     fontSize: 16,

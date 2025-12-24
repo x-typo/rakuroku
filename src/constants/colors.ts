@@ -16,9 +16,9 @@ export const colors = {
   warning: "#EAB308",
 
   // List status colors
-  watching: "#3B82F6",
+  watching: "#22C55E",
   dropped: "#EF4444",
-  completed: "#22C55E",
+  completed: "#3B82F6",
 
   // Overlay
   overlay: "rgba(0, 0, 0, 0.5)",

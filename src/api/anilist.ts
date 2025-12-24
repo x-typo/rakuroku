@@ -208,6 +208,16 @@ query ($id: Int) {
       site
       thumbnail
     }
+    rankings {
+      id
+      rank
+      type
+      format
+      year
+      season
+      allTime
+      context
+    }
     type
     nextAiringEpisode {
       airingAt
@@ -241,6 +251,45 @@ export async function fetchMediaDetails(id: number): Promise<MediaDetails> {
   }
 
   return json.data.Media;
+}
+
+const USER_MEDIA_STATUS_QUERY = `
+query ($userName: String, $mediaId: Int) {
+  MediaList(userName: $userName, mediaId: $mediaId) {
+    status
+    score
+    progress
+  }
+}
+`;
+
+export async function fetchUserMediaStatus(mediaId: number): Promise<MediaStatus | null> {
+  try {
+    const response = await fetch(ANILIST_API, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query: USER_MEDIA_STATUS_QUERY,
+        variables: { userName: USERNAME, mediaId },
+      }),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const json = await response.json();
+
+    if (json.errors || !json.data.MediaList) {
+      return null;
+    }
+
+    return json.data.MediaList.status;
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchUserActivities(

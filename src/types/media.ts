@@ -139,6 +139,17 @@ export interface MediaTrailer {
   thumbnail: string;
 }
 
+export interface MediaRank {
+  id: number;
+  rank: number;
+  type: "RATED" | "POPULAR";
+  format: string;
+  year: number | null;
+  season: string | null;
+  allTime: boolean;
+  context: string;
+}
+
 export interface MediaDetails {
   id: number;
   title: MediaTitle;
@@ -162,6 +173,7 @@ export interface MediaDetails {
   source: string | null;
   studios: StudioConnection | null;
   trailer: MediaTrailer | null;
+  rankings: MediaRank[];
   type: MediaType;
   nextAiringEpisode: NextAiringEpisode | null;
 }
