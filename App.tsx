@@ -10,6 +10,7 @@ import {
   ScheduleScreen,
   ProfileScreen,
 } from "./src/screens";
+import { colors } from "./src/constants";
 
 const Tab = createBottomTabNavigator();
 
@@ -22,12 +23,12 @@ export default function App() {
       <StatusBar style="light" />
       <Tab.Navigator
         screenOptions={{
-          tabBarActiveTintColor: "#3B82F6",
-          tabBarInactiveTintColor: "#9CA3AF",
+          tabBarActiveTintColor: colors.primary,
+          tabBarInactiveTintColor: colors.textSecondary,
           headerTitleAlign: "center",
-          headerStyle: { backgroundColor: "#1c1c1e" },
-          headerTintColor: "#fff",
-          tabBarStyle: { backgroundColor: "#1c1c1e" },
+          headerStyle: { backgroundColor: colors.surface },
+          headerTintColor: colors.textPrimary,
+          tabBarStyle: { backgroundColor: colors.surface },
           tabBarShowLabel: false,
         }}
       >

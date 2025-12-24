@@ -1,11 +1,14 @@
 import { StyleSheet, Text, View } from "react-native";
 import { colors } from "../constants";
 
-export default function ScheduleScreen() {
+interface EmptyStateProps {
+  message: string;
+}
+
+export function EmptyState({ message }: EmptyStateProps) {
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Airing Schedule</Text>
-      <Text style={styles.subtitle}>Upcoming episodes will appear here</Text>
+      <Text style={styles.text}>{message}</Text>
     </View>
   );
 }
@@ -13,17 +16,11 @@ export default function ScheduleScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
     alignItems: "center",
     justifyContent: "center",
+    paddingVertical: 100,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    marginBottom: 8,
-    color: colors.textPrimary,
-  },
-  subtitle: {
+  text: {
     fontSize: 16,
     color: colors.textSecondary,
   },

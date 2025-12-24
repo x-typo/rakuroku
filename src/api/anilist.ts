@@ -1,47 +1,12 @@
+import {
+  MediaType,
+  MediaStatus,
+  MediaListEntry,
+  MediaListCollection,
+} from "../types";
+
 const ANILIST_API = "https://graphql.anilist.co";
 const USERNAME = process.env.EXPO_PUBLIC_ANILIST_USERNAME || "";
-
-export type MediaStatus = "CURRENT" | "COMPLETED" | "DROPPED" | "PLANNING" | "PAUSED" | "REPEATING";
-
-export interface MediaTitle {
-  romaji: string;
-  english: string | null;
-  native: string | null;
-}
-
-export interface MediaCoverImage {
-  large: string;
-  medium: string;
-}
-
-export interface Media {
-  id: number;
-  title: MediaTitle;
-  coverImage: MediaCoverImage;
-  episodes: number | null;
-  chapters: number | null;
-  format: string;
-  status: string;
-  averageScore: number | null;
-}
-
-export interface MediaListEntry {
-  id: number;
-  status: MediaStatus;
-  progress: number;
-  score: number;
-  updatedAt: number;
-  media: Media;
-}
-
-export interface MediaListGroup {
-  status: MediaStatus;
-  entries: MediaListEntry[];
-}
-
-export interface MediaListCollection {
-  lists: MediaListGroup[];
-}
 
 const MEDIA_LIST_QUERY = `
 query ($userName: String, $type: MediaType) {
@@ -77,7 +42,7 @@ query ($userName: String, $type: MediaType) {
 }
 `;
 
-export async function fetchMediaList(type: "ANIME" | "MANGA"): Promise<MediaListEntry[]> {
+export async function fetchMediaList(type: MediaType): Promise<MediaListEntry[]> {
   const response = await fetch(ANILIST_API, {
     method: "POST",
     headers: {
@@ -104,14 +69,16 @@ export async function fetchMediaList(type: "ANIME" | "MANGA"): Promise<MediaList
 
   const collection: MediaListCollection = json.data.MediaListCollection;
 
-  // Flatten all lists into a single array sorted by updatedAt
   const allEntries = collection.lists.flatMap((list) => list.entries);
   allEntries.sort((a, b) => b.updatedAt - a.updatedAt);
 
   return allEntries;
 }
 
-export function filterByStatus(entries: MediaListEntry[], filter: string): MediaListEntry[] {
+export function filterByStatus(
+  entries: MediaListEntry[],
+  filter: string
+): MediaListEntry[] {
   if (filter === "All") {
     return entries;
   }
@@ -130,7 +97,10 @@ export function filterByStatus(entries: MediaListEntry[], filter: string): Media
   return entries.filter((entry) => statuses.includes(entry.status));
 }
 
-export function searchEntries(entries: MediaListEntry[], query: string): MediaListEntry[] {
+export function searchEntries(
+  entries: MediaListEntry[],
+  query: string
+): MediaListEntry[] {
   if (!query.trim()) return entries;
 
   const lowerQuery = query.toLowerCase();

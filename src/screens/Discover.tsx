@@ -1,4 +1,5 @@
 import { StyleSheet, Text, View } from "react-native";
+import { colors } from "../constants";
 
 export default function DiscoverScreen() {
   return (
@@ -12,7 +13,7 @@ export default function DiscoverScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000",
+    backgroundColor: colors.background,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -20,10 +21,10 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "bold",
     marginBottom: 8,
-    color: "#fff",
+    color: colors.textPrimary,
   },
   subtitle: {
     fontSize: 16,
-    color: "#9CA3AF",
+    color: colors.textSecondary,
   },
 });
