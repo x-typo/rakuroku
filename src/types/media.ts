@@ -176,6 +176,7 @@ export interface MediaDetails {
   rankings: MediaRank[];
   type: MediaType;
   nextAiringEpisode: NextAiringEpisode | null;
+  relations: MediaRelationConnection | null;
 }
 
 export interface StudioMedia {
@@ -204,4 +205,37 @@ export interface StudioDetails {
   name: string;
   isAnimationStudio: boolean;
   media: StudioMediaPage;
+}
+
+export type MediaRelationType =
+  | "ADAPTATION"
+  | "PREQUEL"
+  | "SEQUEL"
+  | "PARENT"
+  | "SIDE_STORY"
+  | "CHARACTER"
+  | "SUMMARY"
+  | "ALTERNATIVE"
+  | "SPIN_OFF"
+  | "OTHER"
+  | "SOURCE"
+  | "COMPILATION"
+  | "CONTAINS";
+
+export interface MediaRelationNode {
+  id: number;
+  title: MediaTitle;
+  coverImage: MediaCoverImage;
+  format: string;
+  type: MediaType;
+  status: string;
+}
+
+export interface MediaRelationEdge {
+  relationType: MediaRelationType;
+  node: MediaRelationNode;
+}
+
+export interface MediaRelationConnection {
+  edges: MediaRelationEdge[];
 }

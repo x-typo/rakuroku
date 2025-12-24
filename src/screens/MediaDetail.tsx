@@ -16,7 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../constants";
 import { fetchMediaDetails, fetchUserMediaStatus } from "../api";
-import { MediaDetails, MediaStatus, MediaRank, Studio } from "../types";
+import { MediaDetails, MediaStatus, MediaRank, Studio, MediaRelationType, MediaRelationEdge } from "../types";
 import { RootStackParamList } from "../../App";
 
 type MediaDetailRouteProp = RouteProp<RootStackParamList, "MediaDetail">;
@@ -185,6 +185,25 @@ function stripHtmlTags(text: string): string {
     .replace(/&#39;/g, "'")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function formatRelationType(type: MediaRelationType): string {
+  const typeMap: Record<MediaRelationType, string> = {
+    ADAPTATION: "Adaptation",
+    PREQUEL: "Prequel",
+    SEQUEL: "Sequel",
+    PARENT: "Parent",
+    SIDE_STORY: "Side Story",
+    CHARACTER: "Character",
+    SUMMARY: "Summary",
+    ALTERNATIVE: "Alternative",
+    SPIN_OFF: "Spin Off",
+    OTHER: "Other",
+    SOURCE: "Source",
+    COMPILATION: "Compilation",
+    CONTAINS: "Contains",
+  };
+  return typeMap[type] || type;
 }
 
 export default function MediaDetailScreen() {
@@ -389,6 +408,36 @@ export default function MediaDetailScreen() {
             <Text style={styles.description}>{stripHtmlTags(media.description)}</Text>
           </View>
         )}
+
+        {media.relations?.edges && media.relations.edges.filter((e) => e.relationType !== "ADAPTATION" && e.relationType !== "OTHER").length > 0 && (
+          <View style={styles.relationsSection}>
+            <Text style={styles.sectionTitle}>Relations</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.relationsContainer}
+            >
+              {media.relations.edges.filter((e) => e.relationType !== "ADAPTATION" && e.relationType !== "OTHER").map((edge) => (
+                <Pressable
+                  key={edge.node.id}
+                  style={styles.relationCard}
+                  onPress={() => navigation.navigate("MediaDetail", { mediaId: edge.node.id })}
+                >
+                  <Image
+                    source={{ uri: edge.node.coverImage.medium }}
+                    style={styles.relationCover}
+                  />
+                  <Text style={styles.relationType}>
+                    {formatRelationType(edge.relationType)}
+                  </Text>
+                  <Text style={styles.relationTitle} numberOfLines={2}>
+                    {edge.node.title.english || edge.node.title.romaji}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        )}
       </ScrollView>
 
       {refreshing && (
@@ -563,5 +612,30 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.5)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  relationsSection: {
+    marginTop: 24,
+  },
+  relationsContainer: {
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  relationCard: {
+    width: 100,
+  },
+  relationCover: {
+    width: 100,
+    height: 140,
+    borderRadius: 8,
+  },
+  relationType: {
+    fontSize: 11,
+    color: colors.primary,
+    marginTop: 6,
+  },
+  relationTitle: {
+    fontSize: 12,
+    color: colors.textPrimary,
+    marginTop: 2,
   },
 });

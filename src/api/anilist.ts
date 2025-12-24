@@ -226,6 +226,26 @@ query ($id: Int) {
       timeUntilAiring
       episode
     }
+    relations {
+      edges {
+        relationType
+        node {
+          id
+          title {
+            romaji
+            english
+            native
+          }
+          coverImage {
+            large
+            medium
+          }
+          format
+          type
+          status
+        }
+      }
+    }
   }
 }
 `;
