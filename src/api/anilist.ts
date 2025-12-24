@@ -9,6 +9,8 @@ import {
   ListActivity,
   ActivityPage,
   MediaDetails,
+  StudioDetails,
+  StudioMedia,
 } from "../types";
 
 const ANILIST_API = "https://graphql.anilist.co";
@@ -395,7 +397,7 @@ export async function fetchAiringSchedule(
   const currentDay = now.getDay();
   let daysToAdd = dayIndex - currentDay;
 
-  // If the target day is in the past this week, we still show it (could be earlier today or past days)
+  // If the target day is in the past this week, it still shows (could be earlier today or past days)
   targetDate.setDate(now.getDate() + daysToAdd);
 
   // Set to start of day (00:00:00) in local timezone
@@ -481,5 +483,91 @@ export function searchEntries(
       title.english?.toLowerCase().includes(lowerQuery) ||
       title.native?.includes(query)
     );
+  });
+}
+
+const STUDIO_QUERY = `
+query ($id: Int, $page: Int) {
+  Studio(id: $id) {
+    id
+    name
+    isAnimationStudio
+    media(sort: [START_DATE_DESC], page: $page, perPage: 50) {
+      pageInfo {
+        hasNextPage
+        currentPage
+      }
+      edges {
+        node {
+          id
+          title {
+            romaji
+            english
+            native
+          }
+          coverImage {
+            large
+            medium
+          }
+          episodes
+          chapters
+          format
+          status
+          averageScore
+          startDate {
+            year
+            month
+            day
+          }
+          type
+        }
+      }
+    }
+  }
+}
+`;
+
+export async function fetchStudioDetails(studioId: number): Promise<StudioMedia[]> {
+  const allMedia: StudioMedia[] = [];
+  let page = 1;
+  let hasNextPage = true;
+
+  while (hasNextPage) {
+    const response = await fetch(ANILIST_API, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query: STUDIO_QUERY,
+        variables: { id: studioId, page },
+      }),
+    });
+
+    if (!response.ok) {
+      handleApiError(response.status);
+    }
+
+    const json = await response.json();
+
+    if (json.errors) {
+      throw new Error(json.errors[0]?.message || "AniList API error");
+    }
+
+    const studioData: StudioDetails = json.data.Studio;
+    const mediaEdges = studioData.media.edges;
+
+    allMedia.push(...mediaEdges.map((edge) => edge.node));
+
+    hasNextPage = studioData.media.pageInfo.hasNextPage;
+    page++;
+  }
+
+  // Deduplicate by media ID (studio may appear multiple times for same media)
+  const seen = new Set<number>();
+  return allMedia.filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
   });
 }

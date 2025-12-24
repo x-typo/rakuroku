@@ -10,6 +10,7 @@ import {
   ScheduleScreen,
   ProfileScreen,
   MediaDetailScreen,
+  StudioScreen,
 } from "./src/screens";
 import { colors } from "./src/constants";
 
@@ -20,6 +21,7 @@ export type RootStackParamList = {
   Schedule: undefined;
   Profile: undefined;
   MediaDetail: { mediaId: number };
+  Studio: { studioId: number; studioName: string };
 };
 
 const Tab = createBottomTabNavigator<RootStackParamList>();
@@ -122,6 +124,15 @@ export default function App() {
         <Tab.Screen
           name="MediaDetail"
           component={MediaDetailScreen}
+          options={{
+            tabBarButton: () => null,
+            tabBarItemStyle: { display: "none" },
+            headerShown: false,
+          }}
+        />
+        <Tab.Screen
+          name="Studio"
+          component={StudioScreen}
           options={{
             tabBarButton: () => null,
             tabBarItemStyle: { display: "none" },

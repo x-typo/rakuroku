@@ -10,17 +10,17 @@ import {
   Dimensions,
   Pressable,
 } from "react-native";
-import { RouteProp, useRoute } from "@react-navigation/native";
+import { RouteProp, useRoute, useNavigation } from "@react-navigation/native";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../constants";
 import { fetchMediaDetails, fetchUserMediaStatus } from "../api";
-import { MediaDetails, MediaStatus, MediaRank } from "../types";
+import { MediaDetails, MediaStatus, MediaRank, Studio } from "../types";
+import { RootStackParamList } from "../../App";
 
-type MediaDetailRouteProp = RouteProp<
-  { MediaDetail: { mediaId: number } },
-  "MediaDetail"
->;
+type MediaDetailRouteProp = RouteProp<RootStackParamList, "MediaDetail">;
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -189,6 +189,7 @@ function stripHtmlTags(text: string): string {
 
 export default function MediaDetailScreen() {
   const route = useRoute<MediaDetailRouteProp>();
+  const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const { mediaId } = route.params;
 
@@ -225,10 +226,12 @@ export default function MediaDetailScreen() {
     loadData();
   }, [loadData]);
 
-  const getMainStudio = () => {
-    if (!media?.studios?.edges) return null;
-    const mainStudio = media.studios.edges.find((edge) => edge.isMain);
-    return mainStudio?.node.name || media.studios.edges[0]?.node.name || null;
+  const getMainStudio = (): { id: number; name: string } | null => {
+    if (!media?.studios?.edges || media.studios.edges.length === 0) return null;
+    const mainStudioEdge = media.studios.edges.find((edge) => edge.isMain);
+    const studioNode = mainStudioEdge?.node || media.studios.edges[0]?.node;
+    if (!studioNode) return null;
+    return { id: studioNode.id, name: studioNode.name };
   };
 
   if (loading) {
@@ -290,7 +293,11 @@ export default function MediaDetailScreen() {
             <Text style={styles.title} numberOfLines={3}>
               {title}
             </Text>
-            {studio && <Text style={styles.studio}>{studio}</Text>}
+            {studio && (
+              <Pressable onPress={() => navigation.navigate("Studio", { studioId: studio.id, studioName: studio.name })}>
+                <Text style={styles.studio}>{studio.name}</Text>
+              </Pressable>
+            )}
             {seasonText && <Text style={styles.season}>{seasonText}</Text>}
             {userStatusLabel && userStatusColor && (
               <Text style={[styles.status, { color: userStatusColor }]}>

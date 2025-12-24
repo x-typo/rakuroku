@@ -177,3 +177,31 @@ export interface MediaDetails {
   type: MediaType;
   nextAiringEpisode: NextAiringEpisode | null;
 }
+
+export interface StudioMedia {
+  id: number;
+  title: MediaTitle;
+  coverImage: MediaCoverImage;
+  episodes: number | null;
+  chapters: number | null;
+  format: string;
+  status: string;
+  averageScore: number | null;
+  startDate: FuzzyDate | null;
+  type: MediaType;
+}
+
+export interface StudioMediaPage {
+  pageInfo: {
+    hasNextPage: boolean;
+    currentPage: number;
+  };
+  edges: { node: StudioMedia }[];
+}
+
+export interface StudioDetails {
+  id: number;
+  name: string;
+  isAnimationStudio: boolean;
+  media: StudioMediaPage;
+}

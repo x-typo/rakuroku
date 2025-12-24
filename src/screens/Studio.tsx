@@ -1,0 +1,336 @@
+import { useState, useEffect, useCallback, useMemo } from "react";
+import {
+  StyleSheet,
+  Text,
+  View,
+  FlatList,
+  RefreshControl,
+  Image,
+  ActivityIndicator,
+  Pressable,
+} from "react-native";
+import { RouteProp, useRoute, useNavigation } from "@react-navigation/native";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { colors } from "../constants";
+import { fetchStudioDetails, fetchMediaList } from "../api";
+import { StudioMedia, MediaListEntry, MediaStatus } from "../types";
+import { RootStackParamList } from "../../App";
+
+type StudioRouteProp = RouteProp<RootStackParamList, "Studio">;
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+
+function formatYear(startDate: { year: number | null } | null): string {
+  if (!startDate?.year) return "";
+  return startDate.year.toString();
+}
+
+function formatFormat(format: string): string {
+  const formatMap: Record<string, string> = {
+    TV: "TV",
+    TV_SHORT: "TV Short",
+    MOVIE: "Movie",
+    SPECIAL: "Special",
+    OVA: "OVA",
+    ONA: "ONA",
+    MUSIC: "Music",
+    MANGA: "Manga",
+    NOVEL: "Light Novel",
+    ONE_SHOT: "One Shot",
+  };
+  return formatMap[format] || format;
+}
+
+function getStatusColor(status: MediaStatus | null): string | null {
+  switch (status) {
+    case "CURRENT":
+      return colors.watching;
+    case "COMPLETED":
+      return colors.completed;
+    case "DROPPED":
+      return colors.dropped;
+    case "PAUSED":
+      return colors.warning;
+    case "PLANNING":
+      return colors.textSecondary;
+    default:
+      return null;
+  }
+}
+
+function getStatusLabel(status: MediaStatus | null): string | null {
+  switch (status) {
+    case "CURRENT":
+      return "Watching";
+    case "COMPLETED":
+      return "Completed";
+    case "DROPPED":
+      return "Dropped";
+    case "PAUSED":
+      return "Paused";
+    case "PLANNING":
+      return "Planning";
+    case "REPEATING":
+      return "Rewatching";
+    default:
+      return null;
+  }
+}
+
+export default function StudioScreen() {
+  const route = useRoute<StudioRouteProp>();
+  const navigation = useNavigation<NavigationProp>();
+  const insets = useSafeAreaInsets();
+  const { studioId, studioName } = route.params;
+
+  const [media, setMedia] = useState<StudioMedia[]>([]);
+  const [userAnimeList, setUserAnimeList] = useState<MediaListEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Create a map of media ID to user's status for quick lookup
+  const userStatusMap = useMemo(() => {
+    const map = new Map<number, MediaStatus>();
+    userAnimeList.forEach((entry) => {
+      map.set(entry.media.id, entry.status);
+    });
+    return map;
+  }, [userAnimeList]);
+
+  const loadData = useCallback(async (showRefreshing = false) => {
+    if (showRefreshing) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+    setError(null);
+
+    try {
+      const [studioData, animeList] = await Promise.all([
+        fetchStudioDetails(studioId),
+        fetchMediaList("ANIME"),
+      ]);
+      setMedia(studioData);
+      setUserAnimeList(animeList);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load studio details");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [studioId]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const renderItem = useCallback(
+    ({ item }: { item: StudioMedia }) => {
+      const title = item.title.english || item.title.romaji;
+      const year = formatYear(item.startDate);
+      const format = formatFormat(item.format);
+      const episodeInfo = item.type === "ANIME" && item.episodes ? `${item.episodes} eps` : "";
+      const isUnreleased = item.status === "NOT_YET_RELEASED";
+
+      const userStatus = userStatusMap.get(item.id) || null;
+      const statusLabel = getStatusLabel(userStatus);
+      const statusColor = getStatusColor(userStatus);
+
+      return (
+        <Pressable
+          style={styles.mediaItem}
+          onPress={() => navigation.navigate("MediaDetail", { mediaId: item.id })}
+        >
+          <Image
+            source={{ uri: item.coverImage.medium }}
+            style={styles.coverImage}
+          />
+          <View style={styles.mediaInfo}>
+            <Text style={styles.mediaTitle} numberOfLines={2}>
+              {title}
+            </Text>
+            <Text style={styles.mediaSubtitle}>
+              {[format, isUnreleased ? "Unreleased" : year, episodeInfo].filter(Boolean).join(" • ")}
+            </Text>
+            <View style={styles.bottomRow}>
+              {item.averageScore && !isUnreleased && (
+                <View style={styles.scoreContainer}>
+                  <Ionicons name="star" size={12} color={colors.primary} />
+                  <Text style={styles.scoreText}>{item.averageScore}%</Text>
+                </View>
+              )}
+              {statusLabel && statusColor && (
+                <Text style={[styles.statusText, { color: statusColor }]}>
+                  {statusLabel}
+                </Text>
+              )}
+            </View>
+          </View>
+        </Pressable>
+      );
+    },
+    [navigation, userStatusMap]
+  );
+
+  const renderHeader = () => (
+    <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
+      <Text style={styles.headerTitle} numberOfLines={1}>
+        {studioName}
+      </Text>
+    </View>
+  );
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        {renderHeader()}
+        <View style={styles.centerContent}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.container}>
+        {renderHeader()}
+        <View style={styles.centerContent}>
+          <Text style={styles.errorText}>{error}</Text>
+          <Pressable style={styles.retryButton} onPress={() => loadData()}>
+            <Text style={styles.retryText}>Retry</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      {renderHeader()}
+      <Text style={styles.countText}>{media.length} productions</Text>
+      <FlatList
+        data={media}
+        renderItem={renderItem}
+        keyExtractor={(item, index) => `${item.id}-${index}`}
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => loadData(true)}
+            tintColor={colors.primary}
+          />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No productions found</Text>
+          </View>
+        }
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  header: {
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    backgroundColor: colors.surface,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: colors.textPrimary,
+    textAlign: "center",
+  },
+  countText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  listContent: {
+    paddingBottom: 32,
+  },
+  centerContent: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mediaItem: {
+    flexDirection: "row",
+    padding: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.surface,
+  },
+  coverImage: {
+    width: 60,
+    height: 85,
+    borderRadius: 4,
+  },
+  mediaInfo: {
+    flex: 1,
+    marginLeft: 12,
+    justifyContent: "center",
+  },
+  mediaTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: colors.textPrimary,
+    marginBottom: 4,
+  },
+  mediaSubtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  bottomRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  scoreContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  scoreText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  emptyContainer: {
+    padding: 32,
+    alignItems: "center",
+  },
+  emptyText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+  },
+  errorText: {
+    fontSize: 16,
+    color: colors.error,
+    marginBottom: 16,
+  },
+  retryButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryText: {
+    color: colors.textPrimary,
+    fontWeight: "600",
+  },
+});
