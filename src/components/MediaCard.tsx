@@ -32,6 +32,12 @@ export function MediaCard({ entry, type }: MediaCardProps) {
     return `${entry.progress}`;
   };
 
+  const getScoreColor = () => {
+    if (entry.score >= 8) return colors.success;
+    if (entry.score >= 5) return colors.warning;
+    return colors.error;
+  };
+
   const getScoreText = () => {
     if (entry.score > 0) {
       return `★ ${entry.score}`;
@@ -52,9 +58,6 @@ export function MediaCard({ entry, type }: MediaCardProps) {
           </Text>
           <View style={styles.metaRow}>
             <Text style={styles.progress}>{getProgressText()}</Text>
-            {getScoreText() && (
-              <Text style={styles.score}>{getScoreText()}</Text>
-            )}
             {episodesBehind > 0 && (
               <Text style={styles.behind}>
                 {episodesBehind} ep behind
@@ -65,6 +68,9 @@ export function MediaCard({ entry, type }: MediaCardProps) {
             <Text style={styles.nextAiring}>
               Ep {nextAiring.episode} in {formatNextAiring(nextAiring.airingAt)}
             </Text>
+          )}
+          {getScoreText() && (
+            <Text style={[styles.score, { color: getScoreColor() }]}>{getScoreText()}</Text>
           )}
         </View>
       </View>
@@ -92,7 +98,7 @@ const styles = StyleSheet.create({
   },
   coverImage: {
     width: 80,
-    height: 110,
+    height: 130,
   },
   info: {
     flex: 1,
@@ -117,7 +123,7 @@ const styles = StyleSheet.create({
   },
   score: {
     fontSize: 14,
-    color: colors.warning,
+    marginTop: 4,
   },
   behind: {
     fontSize: 14,
