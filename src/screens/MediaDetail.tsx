@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Dimensions,
   Pressable,
+  Share,
 } from "react-native";
 import { RouteProp, useRoute, useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -287,6 +288,16 @@ export default function MediaDetailScreen() {
   const userStatusColor = getUserStatusColor(userStatus);
   const seasonalRank = getSeasonalRank(media.rankings, media.season, media.seasonYear);
 
+  const handleShare = async () => {
+    try {
+      await Share.share({
+        message: `${title} - https://anilist.co/${media.type.toLowerCase()}/${media.id}`,
+      });
+    } catch (error) {
+      // Share cancelled or failed
+    }
+  };
+
   return (
     <View style={styles.container}>
       <ScrollView
@@ -345,6 +356,9 @@ export default function MediaDetailScreen() {
               </Text>
             </View>
           )}
+          <Pressable onPress={handleShare} style={styles.shareButton}>
+            <Ionicons name="share-outline" size={24} color={colors.textPrimary} />
+          </Pressable>
         </View>
 
         {media.genres.length > 0 && (
@@ -520,6 +534,7 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
+    alignItems: "center",
     paddingHorizontal: 16,
     paddingTop: 16,
     gap: 16,
@@ -532,6 +547,10 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 14,
     color: colors.textPrimary,
+  },
+  shareButton: {
+    marginLeft: "auto",
+    padding: 4,
   },
   genresContainer: {
     flexDirection: "row",
