@@ -94,6 +94,7 @@ export default function AnimeScreen({
         data={filteredEntries}
         renderItem={renderItem}
         keyExtractor={(item) => item.id.toString()}
+        contentContainerStyle={styles.listContent}
         ListHeaderComponent={renderHeader}
         ListEmptyComponent={renderEmpty}
         keyboardShouldPersistTaps="handled"
@@ -138,5 +139,8 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: "bold",
     color: colors.textPrimary,
+  },
+  listContent: {
+    paddingBottom: 16,
   },
 });

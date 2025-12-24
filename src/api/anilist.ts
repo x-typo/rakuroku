@@ -5,10 +5,74 @@ import {
   MediaListCollection,
   AiringSchedule,
   AiringSchedulePage,
+  User,
+  ListActivity,
+  ActivityPage,
 } from "../types";
 
 const ANILIST_API = "https://graphql.anilist.co";
 const USERNAME = process.env.EXPO_PUBLIC_ANILIST_USERNAME || "";
+
+const ACTIVITY_QUERY = `
+query ($userId: Int, $page: Int, $perPage: Int) {
+  Page(page: $page, perPage: $perPage) {
+    pageInfo {
+      hasNextPage
+      currentPage
+    }
+    activities(userId: $userId, type: MEDIA_LIST, sort: ID_DESC) {
+      ... on ListActivity {
+        id
+        status
+        progress
+        createdAt
+        media {
+          id
+          title {
+            romaji
+            english
+            native
+          }
+          coverImage {
+            large
+            medium
+          }
+          episodes
+          chapters
+          format
+          status
+          averageScore
+        }
+      }
+    }
+  }
+}
+`;
+
+const USER_QUERY = `
+query ($name: String) {
+  User(name: $name) {
+    id
+    name
+    avatar {
+      large
+      medium
+    }
+    bannerImage
+    statistics {
+      anime {
+        count
+        episodesWatched
+        minutesWatched
+      }
+      manga {
+        count
+        chaptersRead
+      }
+    }
+  }
+}
+`;
 
 const AIRING_SCHEDULE_QUERY = `
 query ($page: Int, $airingAt_greater: Int, $airingAt_lesser: Int) {
@@ -71,12 +135,77 @@ query ($userName: String, $type: MediaType) {
           format
           status
           averageScore
+          nextAiringEpisode {
+            airingAt
+            timeUntilAiring
+            episode
+          }
         }
       }
     }
   }
 }
 `;
+
+export async function fetchUserActivities(
+  userId: number,
+  perPage: number = 15
+): Promise<ListActivity[]> {
+  const response = await fetch(ANILIST_API, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      query: ACTIVITY_QUERY,
+      variables: {
+        userId,
+        page: 1,
+        perPage,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`AniList API error: ${response.status}`);
+  }
+
+  const json = await response.json();
+
+  if (json.errors) {
+    throw new Error(json.errors[0]?.message || "AniList API error");
+  }
+
+  const pageData: ActivityPage = json.data.Page;
+  return pageData.activities;
+}
+
+export async function fetchUser(): Promise<User> {
+  const response = await fetch(ANILIST_API, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      query: USER_QUERY,
+      variables: {
+        name: USERNAME,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`AniList API error: ${response.status}`);
+  }
+
+  const json = await response.json();
+
+  if (json.errors) {
+    throw new Error(json.errors[0]?.message || "AniList API error");
+  }
+
+  return json.data.User;
+}
 
 export async function fetchMediaList(type: MediaType): Promise<MediaListEntry[]> {
   const response = await fetch(ANILIST_API, {

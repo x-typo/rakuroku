@@ -19,6 +19,12 @@ export interface MediaCoverImage {
   medium: string;
 }
 
+export interface NextAiringEpisode {
+  airingAt: number;
+  timeUntilAiring: number;
+  episode: number;
+}
+
 export interface Media {
   id: number;
   title: MediaTitle;
@@ -28,6 +34,7 @@ export interface Media {
   format: string;
   status: string;
   averageScore: number | null;
+  nextAiringEpisode: NextAiringEpisode | null;
 }
 
 export interface MediaListEntry {
@@ -62,4 +69,45 @@ export interface AiringSchedulePage {
     currentPage: number;
   };
   airingSchedules: AiringSchedule[];
+}
+
+export interface UserAvatar {
+  large: string;
+  medium: string;
+}
+
+export interface UserStatistics {
+  anime: {
+    count: number;
+    episodesWatched: number;
+    minutesWatched: number;
+  };
+  manga: {
+    count: number;
+    chaptersRead: number;
+  };
+}
+
+export interface User {
+  id: number;
+  name: string;
+  avatar: UserAvatar;
+  bannerImage: string | null;
+  statistics: UserStatistics;
+}
+
+export interface ListActivity {
+  id: number;
+  status: string;
+  progress: string | null;
+  createdAt: number;
+  media: Media;
+}
+
+export interface ActivityPage {
+  pageInfo: {
+    hasNextPage: boolean;
+    currentPage: number;
+  };
+  activities: ListActivity[];
 }
