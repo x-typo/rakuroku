@@ -725,3 +725,90 @@ export async function fetchSeasonalAnime(
     currentPage: json.data.Page.pageInfo.currentPage,
   };
 }
+
+const SEARCH_MEDIA_QUERY = `
+query ($search: String, $page: Int, $perPage: Int) {
+  Page(page: $page, perPage: $perPage) {
+    pageInfo {
+      hasNextPage
+      currentPage
+    }
+    media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
+      id
+      title {
+        romaji
+        english
+        native
+      }
+      coverImage {
+        large
+        medium
+      }
+      episodes
+      format
+      status
+      averageScore
+      popularity
+      genres
+      studios {
+        edges {
+          isMain
+          node {
+            id
+            name
+            isAnimationStudio
+          }
+        }
+      }
+      nextAiringEpisode {
+        airingAt
+        timeUntilAiring
+        episode
+      }
+    }
+  }
+}
+`;
+
+export interface SearchMediaPage {
+  media: SeasonalMedia[];
+  hasNextPage: boolean;
+  currentPage: number;
+}
+
+export async function searchMedia(
+  query: string,
+  page: number = 1,
+  perPage: number = 20
+): Promise<SearchMediaPage> {
+  const response = await fetch(ANILIST_API, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      query: SEARCH_MEDIA_QUERY,
+      variables: {
+        search: query,
+        page,
+        perPage,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    handleApiError(response.status);
+  }
+
+  const json = await response.json();
+
+  if (json.errors) {
+    throw new Error(json.errors[0]?.message || "AniList API error");
+  }
+
+  return {
+    media: json.data.Page.media,
+    hasNextPage: json.data.Page.pageInfo.hasNextPage,
+    currentPage: json.data.Page.pageInfo.currentPage,
+  };
+}

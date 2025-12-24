@@ -147,29 +147,34 @@ export default function SeasonListScreen() {
 
       return (
         <Pressable
-          style={styles.mediaItem}
+          style={styles.card}
           onPress={() => navigation.navigate("MediaDetail", { mediaId: item.id })}
         >
-          <Image
-            source={{ uri: item.coverImage.medium }}
-            style={styles.coverImage}
-          />
-          <View style={styles.mediaInfo}>
-            <Text style={styles.mediaTitle} numberOfLines={2}>
-              {title}
-            </Text>
-            {studio && (
-              <Text style={styles.studioName} numberOfLines={1}>
-                {studio}
+          <View style={styles.cardRow}>
+            <Image
+              source={{ uri: item.coverImage.medium }}
+              style={styles.coverImage}
+            />
+            <View style={styles.cardInfo}>
+              <Text style={styles.cardTitle} numberOfLines={2}>
+                {title}
               </Text>
-            )}
-            <View style={styles.bottomRow}>
-              {item.averageScore && (
-                <View style={styles.scoreContainer}>
-                  <Ionicons name="bar-chart" size={12} color={colors.primary} />
-                  <Text style={styles.scoreText}>{item.averageScore}%</Text>
-                </View>
+              {studio && (
+                <Text style={styles.studioName} numberOfLines={1}>
+                  {studio}
+                </Text>
               )}
+              <View style={styles.metaRow}>
+                {item.averageScore && (
+                  <View style={styles.scoreContainer}>
+                    <Ionicons name="bar-chart" size={12} color={colors.primary} />
+                    <Text style={styles.scoreText}>{item.averageScore}%</Text>
+                  </View>
+                )}
+                {item.episodes && (
+                  <Text style={styles.episodesText}>{item.episodes} episodes</Text>
+                )}
+              </View>
               {statusLabel && statusColor && (
                 <Text style={[styles.statusText, { color: statusColor }]}>
                   {statusLabel}
@@ -269,24 +274,27 @@ const styles = StyleSheet.create({
   listContent: {
     paddingBottom: 24,
   },
-  mediaItem: {
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    overflow: "hidden",
+  },
+  cardRow: {
     flexDirection: "row",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
   },
   coverImage: {
-    width: 70,
-    height: 100,
-    borderRadius: 6,
-    backgroundColor: colors.surface,
+    width: 80,
+    height: 120,
   },
-  mediaInfo: {
+  cardInfo: {
     flex: 1,
-    marginLeft: 12,
+    padding: 12,
     justifyContent: "center",
   },
-  mediaTitle: {
-    fontSize: 15,
+  cardTitle: {
+    fontSize: 16,
     fontWeight: "600",
     color: colors.textPrimary,
     marginBottom: 4,
@@ -296,7 +304,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: 4,
   },
-  bottomRow: {
+  metaRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
@@ -307,12 +315,17 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   scoreText: {
-    fontSize: 12,
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  episodesText: {
+    fontSize: 13,
     color: colors.textSecondary,
   },
   statusText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "600",
+    marginTop: 4,
   },
   footerLoader: {
     paddingVertical: 16,

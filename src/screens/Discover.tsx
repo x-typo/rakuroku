@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   StyleSheet,
   Text,
   View,
   ScrollView,
+  FlatList,
   RefreshControl,
   Image,
   Pressable,
@@ -14,9 +15,10 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../constants";
-import { fetchSeasonalAnime, getSeasonInfo } from "../api";
+import { fetchSeasonalAnime, getSeasonInfo, searchMedia } from "../api";
 import { SeasonalMedia, Season } from "../types";
 import { RootStackParamList } from "../../App";
+import { SearchBar } from "../components";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -36,9 +38,16 @@ export default function DiscoverScreen() {
 
   const [currentSeasonAnime, setCurrentSeasonAnime] = useState<SeasonalMedia[]>([]);
   const [nextSeasonAnime, setNextSeasonAnime] = useState<SeasonalMedia[]>([]);
+  const [searchResults, setSearchResults] = useState<SeasonalMedia[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const currentPage = useRef(1);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const seasonInfo = getSeasonInfo();
 
@@ -65,9 +74,71 @@ export default function DiscoverScreen() {
     }
   }, [seasonInfo.current.season, seasonInfo.current.year, seasonInfo.next.season, seasonInfo.next.year]);
 
+  const performSearch = useCallback(async (query: string) => {
+    if (!query.trim()) {
+      setSearchResults([]);
+      setSearching(false);
+      return;
+    }
+
+    setSearching(true);
+    currentPage.current = 1;
+
+    try {
+      const result = await searchMedia(query, 1, 25);
+      setSearchResults(result.media);
+      setHasNextPage(result.hasNextPage);
+    } catch (err) {
+      // Silently fail on search - user can try again
+    } finally {
+      setSearching(false);
+    }
+  }, []);
+
+  const loadMoreSearchResults = useCallback(async () => {
+    if (loadingMore || !hasNextPage || !searchQuery.trim()) return;
+
+    setLoadingMore(true);
+    const nextPage = currentPage.current + 1;
+
+    try {
+      const result = await searchMedia(searchQuery, nextPage, 25);
+      setSearchResults((prev) => [...prev, ...result.media]);
+      setHasNextPage(result.hasNextPage);
+      currentPage.current = nextPage;
+    } catch (err) {
+      // Silently fail on load more
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [searchQuery, loadingMore, hasNextPage]);
+
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      setSearching(false);
+      return;
+    }
+
+    setSearching(true);
+    searchDebounceRef.current = setTimeout(() => {
+      performSearch(searchQuery);
+    }, 300);
+
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
+    };
+  }, [searchQuery, performSearch]);
 
   const renderMediaCard = (item: SeasonalMedia) => {
     const title = item.title.english || item.title.romaji;
@@ -98,6 +169,47 @@ export default function DiscoverScreen() {
     );
   };
 
+  const renderSearchResultItem = useCallback(
+    ({ item }: { item: SeasonalMedia }) => {
+      const title = item.title.english || item.title.romaji;
+      const studio = getMainStudio(item);
+
+      return (
+        <Pressable
+          style={styles.searchResultItem}
+          onPress={() => navigation.navigate("MediaDetail", { mediaId: item.id })}
+        >
+          <Image
+            source={{ uri: item.coverImage.medium }}
+            style={styles.searchResultCover}
+          />
+          <View style={styles.searchResultInfo}>
+            <Text style={styles.searchResultTitle} numberOfLines={2}>
+              {title}
+            </Text>
+            {studio && (
+              <Text style={styles.searchResultStudio} numberOfLines={1}>
+                {studio}
+              </Text>
+            )}
+            <View style={styles.searchResultMeta}>
+              {item.averageScore && (
+                <View style={styles.scoreContainer}>
+                  <Ionicons name="bar-chart" size={12} color={colors.primary} />
+                  <Text style={styles.scoreText}>{item.averageScore}%</Text>
+                </View>
+              )}
+              {item.format && (
+                <Text style={styles.formatText}>{item.format}</Text>
+              )}
+            </View>
+          </View>
+        </Pressable>
+      );
+    },
+    [navigation]
+  );
+
   const renderSection = (
     label: string,
     season: Season,
@@ -127,7 +239,18 @@ export default function DiscoverScreen() {
     </View>
   );
 
-  if (loading) {
+  const renderSearchFooter = () => {
+    if (!loadingMore) return null;
+    return (
+      <View style={styles.footerLoader}>
+        <ActivityIndicator size="small" color={colors.primary} />
+      </View>
+    );
+  };
+
+  const isSearching = searchQuery.trim().length > 0;
+
+  if (loading && !isSearching) {
     return (
       <View style={[styles.container, styles.centered]}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -135,7 +258,7 @@ export default function DiscoverScreen() {
     );
   }
 
-  if (error) {
+  if (error && !isSearching) {
     return (
       <View style={[styles.container, styles.centered]}>
         <Text style={styles.errorText}>{error}</Text>
@@ -147,31 +270,63 @@ export default function DiscoverScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <ScrollView
-        contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => loadData(true)}
-            tintColor={colors.primary}
-          />
-        }
-      >
-        {renderSection(
-          "Current Season",
-          seasonInfo.current.season,
-          seasonInfo.current.year,
-          currentSeasonAnime
-        )}
+    <View style={[styles.container, { paddingTop: insets.top + 16 }]}>
+      <View style={styles.searchBarContainer}>
+        <SearchBar
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          onClear={() => setSearchQuery("")}
+        />
+      </View>
 
-        {renderSection(
-          "Upcoming Season",
-          seasonInfo.next.season,
-          seasonInfo.next.year,
-          nextSeasonAnime
-        )}
-      </ScrollView>
+      {isSearching ? (
+        searching && searchResults.length === 0 ? (
+          <View style={[styles.container, styles.centered]}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : searchResults.length === 0 ? (
+          <View style={[styles.container, styles.centered]}>
+            <Text style={styles.emptyText}>No results found</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={searchResults}
+            renderItem={renderSearchResultItem}
+            keyExtractor={(item) => item.id.toString()}
+            contentContainerStyle={styles.searchResultsList}
+            onEndReached={loadMoreSearchResults}
+            onEndReachedThreshold={0.5}
+            ListFooterComponent={renderSearchFooter}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          />
+        )
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => loadData(true)}
+              tintColor={colors.primary}
+            />
+          }
+        >
+          {renderSection(
+            "Current Season",
+            seasonInfo.current.season,
+            seasonInfo.current.year,
+            currentSeasonAnime
+          )}
+
+          {renderSection(
+            "Upcoming Season",
+            seasonInfo.next.season,
+            seasonInfo.next.year,
+            nextSeasonAnime
+          )}
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -180,6 +335,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  searchBarContainer: {
+    marginBottom: 16,
   },
   centered: {
     alignItems: "center",
@@ -258,5 +416,53 @@ const styles = StyleSheet.create({
   retryText: {
     color: colors.textPrimary,
     fontWeight: "600",
+  },
+  emptyText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: "center",
+  },
+  searchResultsList: {
+    paddingBottom: 24,
+  },
+  searchResultItem: {
+    flexDirection: "row",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  searchResultCover: {
+    width: 70,
+    height: 100,
+    borderRadius: 6,
+    backgroundColor: colors.surface,
+  },
+  searchResultInfo: {
+    flex: 1,
+    marginLeft: 12,
+    justifyContent: "center",
+  },
+  searchResultTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: colors.textPrimary,
+    marginBottom: 4,
+  },
+  searchResultStudio: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  searchResultMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  formatText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  footerLoader: {
+    paddingVertical: 16,
+    alignItems: "center",
   },
 });
