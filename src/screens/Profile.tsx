@@ -8,10 +8,14 @@ import {
   RefreshControl,
   ActivityIndicator,
   TouchableOpacity,
+  Pressable,
 } from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { colors } from "../constants";
 import { fetchUser, fetchUserActivities } from "../api";
 import { User, ListActivity } from "../types";
+import { RootStackParamList } from "../../App";
 
 function formatTimeAgo(timestamp: number): string {
   const now = Date.now() / 1000;
@@ -58,7 +62,10 @@ function formatActivityStatus(activity: ListActivity): string {
   return `${status} ${title}`;
 }
 
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+
 export default function ProfileScreen() {
+  const navigation = useNavigation<NavigationProp>();
   const [user, setUser] = useState<User | null>(null);
   const [activities, setActivities] = useState<ListActivity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -170,7 +177,11 @@ export default function ProfileScreen() {
             <Text style={styles.noActivities}>No recent activities</Text>
           ) : (
             activities.map((activity) => (
-              <View key={activity.id} style={styles.activityRow}>
+              <Pressable
+                key={activity.id}
+                style={styles.activityRow}
+                onPress={() => navigation.navigate("MediaDetail", { mediaId: activity.media.id })}
+              >
                 <Image
                   source={{ uri: activity.media.coverImage.medium }}
                   style={styles.activityPoster}
@@ -183,7 +194,7 @@ export default function ProfileScreen() {
                 <Text style={styles.activityTime}>
                   {formatTimeAgo(activity.createdAt)}
                 </Text>
-              </View>
+              </Pressable>
             ))
           )}
         </View>

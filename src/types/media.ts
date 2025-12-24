@@ -111,3 +111,57 @@ export interface ActivityPage {
   };
   activities: ListActivity[];
 }
+
+export interface FuzzyDate {
+  year: number | null;
+  month: number | null;
+  day: number | null;
+}
+
+export interface Studio {
+  id: number;
+  name: string;
+  isAnimationStudio: boolean;
+}
+
+export interface StudioEdge {
+  isMain: boolean;
+  node: Studio;
+}
+
+export interface StudioConnection {
+  edges: StudioEdge[];
+}
+
+export interface MediaTrailer {
+  id: string;
+  site: string;
+  thumbnail: string;
+}
+
+export interface MediaDetails {
+  id: number;
+  title: MediaTitle;
+  coverImage: MediaCoverImage;
+  bannerImage: string | null;
+  description: string | null;
+  episodes: number | null;
+  chapters: number | null;
+  volumes: number | null;
+  format: string;
+  status: string;
+  averageScore: number | null;
+  meanScore: number | null;
+  popularity: number | null;
+  genres: string[];
+  season: string | null;
+  seasonYear: number | null;
+  startDate: FuzzyDate | null;
+  endDate: FuzzyDate | null;
+  duration: number | null;
+  source: string | null;
+  studios: StudioConnection | null;
+  trailer: MediaTrailer | null;
+  type: MediaType;
+  nextAiringEpisode: NextAiringEpisode | null;
+}

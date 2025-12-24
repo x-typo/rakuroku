@@ -8,6 +8,7 @@ import {
   User,
   ListActivity,
   ActivityPage,
+  MediaDetails,
 } from "../types";
 
 const ANILIST_API = "https://graphql.anilist.co";
@@ -153,6 +154,94 @@ query ($userName: String, $type: MediaType) {
   }
 }
 `;
+
+const MEDIA_DETAILS_QUERY = `
+query ($id: Int) {
+  Media(id: $id) {
+    id
+    title {
+      romaji
+      english
+      native
+    }
+    coverImage {
+      large
+      medium
+    }
+    bannerImage
+    description(asHtml: false)
+    episodes
+    chapters
+    volumes
+    format
+    status
+    averageScore
+    meanScore
+    popularity
+    genres
+    season
+    seasonYear
+    startDate {
+      year
+      month
+      day
+    }
+    endDate {
+      year
+      month
+      day
+    }
+    duration
+    source
+    studios {
+      edges {
+        isMain
+        node {
+          id
+          name
+          isAnimationStudio
+        }
+      }
+    }
+    trailer {
+      id
+      site
+      thumbnail
+    }
+    type
+    nextAiringEpisode {
+      airingAt
+      timeUntilAiring
+      episode
+    }
+  }
+}
+`;
+
+export async function fetchMediaDetails(id: number): Promise<MediaDetails> {
+  const response = await fetch(ANILIST_API, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      query: MEDIA_DETAILS_QUERY,
+      variables: { id },
+    }),
+  });
+
+  if (!response.ok) {
+    handleApiError(response.status);
+  }
+
+  const json = await response.json();
+
+  if (json.errors) {
+    throw new Error(json.errors[0]?.message || "AniList API error");
+  }
+
+  return json.data.Media;
+}
 
 export async function fetchUserActivities(
   userId: number,

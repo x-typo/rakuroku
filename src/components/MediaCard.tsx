@@ -1,6 +1,11 @@
 import { StyleSheet, Text, View, Image, Pressable, Keyboard } from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { colors } from "../constants";
 import { MediaListEntry } from "../types";
+import { RootStackParamList } from "../../App";
+
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 interface MediaCardProps {
   entry: MediaListEntry;
@@ -18,6 +23,7 @@ function formatNextAiring(airingAt: number): string {
 }
 
 export function MediaCard({ entry, type }: MediaCardProps) {
+  const navigation = useNavigation<NavigationProp>();
   const total = type === "ANIME" ? entry.media.episodes : entry.media.chapters;
   const progressPercent = total ? (entry.progress / total) * 100 : 0;
   const showProgressBar = total && total > 0;
@@ -46,7 +52,13 @@ export function MediaCard({ entry, type }: MediaCardProps) {
   };
 
   return (
-    <Pressable style={styles.container} onPress={() => Keyboard.dismiss()}>
+    <Pressable
+      style={styles.container}
+      onPress={() => {
+        Keyboard.dismiss();
+        navigation.navigate("MediaDetail", { mediaId: entry.media.id });
+      }}
+    >
       <View style={styles.row}>
         <Image
           source={{ uri: entry.media.coverImage.medium }}

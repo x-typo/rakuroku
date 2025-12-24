@@ -9,10 +9,16 @@ import {
   PanResponder,
   Image,
   ActivityIndicator,
+  Pressable,
 } from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { colors } from "../constants";
 import { fetchAiringSchedule, fetchMediaList } from "../api";
 import { AiringSchedule, MediaListEntry, MediaStatus } from "../types";
+import { RootStackParamList } from "../../App";
+
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const DAYS = ["S", "M", "T", "W", "T", "F", "S"] as const;
 
@@ -48,6 +54,7 @@ function getStatusLabel(status: MediaStatus | null): string | null {
 }
 
 export default function ScheduleScreen() {
+  const navigation = useNavigation<NavigationProp>();
   const [selectedDay, setSelectedDay] = useState(new Date().getDay());
   const [schedules, setSchedules] = useState<AiringSchedule[]>([]);
   const [userAnimeList, setUserAnimeList] = useState<MediaListEntry[]>([]);
@@ -119,7 +126,10 @@ export default function ScheduleScreen() {
       const isHighlighted = userStatus === "CURRENT" || userStatus === "COMPLETED";
 
       return (
-        <View style={[styles.scheduleItem, !isHighlighted && styles.scheduleItemDimmed]}>
+        <Pressable
+          style={[styles.scheduleItem, !isHighlighted && styles.scheduleItemDimmed]}
+          onPress={() => navigation.navigate("MediaDetail", { mediaId: item.media.id })}
+        >
           <Image
             source={{ uri: item.media.coverImage.medium }}
             style={styles.coverImage}
@@ -145,10 +155,10 @@ export default function ScheduleScreen() {
               {hasAired ? `Aired at ${airingTime}` : `Airing at ${airingTime}`}
             </Text>
           </View>
-        </View>
+        </Pressable>
       );
     },
-    [userStatusMap]
+    [userStatusMap, navigation]
   );
 
   const renderContent = () => {
