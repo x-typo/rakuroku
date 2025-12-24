@@ -3,10 +3,46 @@ import {
   MediaStatus,
   MediaListEntry,
   MediaListCollection,
+  AiringSchedule,
+  AiringSchedulePage,
 } from "../types";
 
 const ANILIST_API = "https://graphql.anilist.co";
 const USERNAME = process.env.EXPO_PUBLIC_ANILIST_USERNAME || "";
+
+const AIRING_SCHEDULE_QUERY = `
+query ($page: Int, $airingAt_greater: Int, $airingAt_lesser: Int) {
+  Page(page: $page, perPage: 50) {
+    pageInfo {
+      hasNextPage
+      currentPage
+    }
+    airingSchedules(airingAt_greater: $airingAt_greater, airingAt_lesser: $airingAt_lesser, sort: TIME) {
+      id
+      airingAt
+      timeUntilAiring
+      episode
+      media {
+        id
+        title {
+          romaji
+          english
+          native
+        }
+        coverImage {
+          large
+          medium
+        }
+        episodes
+        chapters
+        format
+        status
+        averageScore
+      }
+    }
+  }
+}
+`;
 
 const MEDIA_LIST_QUERY = `
 query ($userName: String, $type: MediaType) {
@@ -73,6 +109,66 @@ export async function fetchMediaList(type: MediaType): Promise<MediaListEntry[]>
   allEntries.sort((a, b) => b.updatedAt - a.updatedAt);
 
   return allEntries;
+}
+
+export async function fetchAiringSchedule(
+  dayIndex: number
+): Promise<AiringSchedule[]> {
+  const now = new Date();
+  const targetDate = new Date(now);
+
+  // Calculate the target day
+  const currentDay = now.getDay();
+  let daysToAdd = dayIndex - currentDay;
+
+  // If the target day is in the past this week, we still show it (could be earlier today or past days)
+  targetDate.setDate(now.getDate() + daysToAdd);
+
+  // Set to start of day (00:00:00) in local timezone
+  targetDate.setHours(0, 0, 0, 0);
+  const startOfDay = Math.floor(targetDate.getTime() / 1000);
+
+  // Set to end of day (23:59:59)
+  const endOfDay = startOfDay + 86400 - 1;
+
+  const allSchedules: AiringSchedule[] = [];
+  let page = 1;
+  let hasNextPage = true;
+
+  while (hasNextPage) {
+    const response = await fetch(ANILIST_API, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query: AIRING_SCHEDULE_QUERY,
+        variables: {
+          page,
+          airingAt_greater: startOfDay,
+          airingAt_lesser: endOfDay,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`AniList API error: ${response.status}`);
+    }
+
+    const json = await response.json();
+
+    if (json.errors) {
+      throw new Error(json.errors[0]?.message || "AniList API error");
+    }
+
+    const pageData: AiringSchedulePage = json.data.Page;
+    allSchedules.push(...pageData.airingSchedules);
+
+    hasNextPage = pageData.pageInfo.hasNextPage;
+    page++;
+  }
+
+  return allSchedules;
 }
 
 export function filterByStatus(

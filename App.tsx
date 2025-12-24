@@ -28,7 +28,11 @@ export default function App() {
           headerTitleAlign: "center",
           headerStyle: { backgroundColor: colors.surface },
           headerTintColor: colors.textPrimary,
-          tabBarStyle: { backgroundColor: colors.surface },
+          tabBarStyle: {
+            backgroundColor: colors.surface,
+            paddingTop: 6,
+            height: 60,
+          },
           tabBarShowLabel: false,
         }}
       >

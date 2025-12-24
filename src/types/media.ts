@@ -47,3 +47,19 @@ export interface MediaListGroup {
 export interface MediaListCollection {
   lists: MediaListGroup[];
 }
+
+export interface AiringSchedule {
+  id: number;
+  airingAt: number;
+  timeUntilAiring: number;
+  episode: number;
+  media: Media;
+}
+
+export interface AiringSchedulePage {
+  pageInfo: {
+    hasNextPage: boolean;
+    currentPage: number;
+  };
+  airingSchedules: AiringSchedule[];
+}
