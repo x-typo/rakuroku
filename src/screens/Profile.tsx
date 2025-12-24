@@ -187,6 +187,11 @@ export default function ProfileScreen() {
           ))
         )}
       </View>
+      {refreshing && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -303,5 +308,11 @@ const styles = StyleSheet.create({
   retryText: {
     color: colors.textPrimary,
     fontWeight: "600",
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

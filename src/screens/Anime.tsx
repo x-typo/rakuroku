@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { StyleSheet, Text, View, FlatList, RefreshControl } from "react-native";
+import { StyleSheet, Text, View, FlatList, RefreshControl, ActivityIndicator } from "react-native";
 import { colors, ANIME_FILTERS, DEFAULT_ANIME_FILTER } from "../constants";
 import { MediaListEntry } from "../types";
 import { useMediaList } from "../hooks";
@@ -44,18 +44,6 @@ export default function AnimeScreen({
     []
   );
 
-  const renderHeader = () => {
-    if (!showSearch) return null;
-    return (
-      <SearchBar
-        value={searchQuery}
-        onChangeText={setSearchQuery}
-        onClear={() => setSearchQuery("")}
-        autoFocus
-      />
-    );
-  };
-
   const renderEmpty = () => (
     <EmptyState
       message={searchQuery ? "No results found" : "No anime in this list"}
@@ -90,15 +78,22 @@ export default function AnimeScreen({
         <Text style={styles.title}>{selectedFilter}</Text>
       </View>
 
+      {showSearch && (
+        <SearchBar
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          onClear={() => setSearchQuery("")}
+        />
+      )}
+
       <FlatList
         data={filteredEntries}
         renderItem={renderItem}
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.listContent}
-        ListHeaderComponent={renderHeader}
         ListEmptyComponent={renderEmpty}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="always"
+        keyboardDismissMode="none"
         onScroll={handleScroll}
         scrollEventThrottle={16}
         refreshControl={
@@ -118,6 +113,12 @@ export default function AnimeScreen({
         selectedFilter={selectedFilter}
         onSelectFilter={(filter) => handleFilterSelect(filter, onCloseFilterModal)}
       />
+
+      {refreshing && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      )}
     </View>
   );
 }
@@ -142,5 +143,11 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: 16,
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

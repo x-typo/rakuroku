@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, Image } from "react-native";
+import { StyleSheet, Text, View, Image, Pressable, Keyboard } from "react-native";
 import { colors } from "../constants";
 import { MediaListEntry } from "../types";
 
@@ -46,7 +46,7 @@ export function MediaCard({ entry, type }: MediaCardProps) {
   };
 
   return (
-    <View style={styles.container}>
+    <Pressable style={styles.container} onPress={() => Keyboard.dismiss()}>
       <View style={styles.row}>
         <Image
           source={{ uri: entry.media.coverImage.medium }}
@@ -81,7 +81,7 @@ export function MediaCard({ entry, type }: MediaCardProps) {
           />
         </View>
       )}
-    </View>
+    </Pressable>
   );
 }
 

@@ -30,8 +30,8 @@ export default function App() {
           headerTintColor: colors.textPrimary,
           tabBarStyle: {
             backgroundColor: colors.surface,
-            paddingTop: 6,
-            height: 60,
+            paddingTop: 10,
+            height: 80,
           },
           tabBarShowLabel: false,
         }}
@@ -41,7 +41,7 @@ export default function App() {
           component={DiscoverScreen}
           options={{
             tabBarIcon: ({ color }) => (
-              <FontAwesome name="search" size={24} color={color} />
+              <FontAwesome name="search" size={30} color={color} />
             ),
           }}
         />
@@ -49,7 +49,7 @@ export default function App() {
           name="Anime"
           options={{
             tabBarIcon: ({ color }) => (
-              <Ionicons name="tv" size={24} color={color} />
+              <Ionicons name="tv" size={30} color={color} />
             ),
           }}
           listeners={({ navigation }) => ({
@@ -72,7 +72,7 @@ export default function App() {
           name="Manga"
           options={{
             tabBarIcon: ({ color }) => (
-              <FontAwesome6 name="book-open" size={24} color={color} />
+              <FontAwesome6 name="book-open" size={30} color={color} />
             ),
           }}
           listeners={({ navigation }) => ({
@@ -96,7 +96,7 @@ export default function App() {
           component={ScheduleScreen}
           options={{
             tabBarIcon: ({ color }) => (
-              <Ionicons name="calendar" size={24} color={color} />
+              <Ionicons name="calendar" size={30} color={color} />
             ),
           }}
         />
@@ -105,7 +105,7 @@ export default function App() {
           component={ProfileScreen}
           options={{
             tabBarIcon: ({ color }) => (
-              <Ionicons name="person" size={24} color={color} />
+              <Ionicons name="person" size={30} color={color} />
             ),
           }}
         />

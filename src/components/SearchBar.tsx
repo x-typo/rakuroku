@@ -1,4 +1,4 @@
-import { StyleSheet, View, TextInput, TouchableOpacity } from "react-native";
+import { StyleSheet, View, TextInput, TouchableOpacity, Keyboard, useColorScheme } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../constants";
 
@@ -15,6 +15,8 @@ export function SearchBar({
   onClear,
   autoFocus = false,
 }: SearchBarProps) {
+  const colorScheme = useColorScheme();
+
   return (
     <View style={styles.container}>
       <TextInput
@@ -24,6 +26,9 @@ export function SearchBar({
         value={value}
         onChangeText={onChangeText}
         autoFocus={autoFocus}
+        returnKeyType="search"
+        onSubmitEditing={() => Keyboard.dismiss()}
+        keyboardAppearance={colorScheme === "dark" ? "dark" : "light"}
       />
       {value.length > 0 && (
         <TouchableOpacity style={styles.clearButton} onPress={onClear}>
