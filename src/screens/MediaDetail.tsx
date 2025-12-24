@@ -298,7 +298,6 @@ export default function MediaDetailScreen() {
                 <Text style={styles.studio}>{studio.name}</Text>
               </Pressable>
             )}
-            {seasonText && <Text style={styles.season}>{seasonText}</Text>}
             {userStatusLabel && userStatusColor && (
               <Text style={[styles.status, { color: userStatusColor }]}>
                 {userStatusLabel}
@@ -374,6 +373,12 @@ export default function MediaDetailScreen() {
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>End Date</Text>
               <Text style={styles.infoValue}>{formatDate(media.endDate)}</Text>
+            </View>
+          )}
+          {seasonText && (
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Season</Text>
+              <Text style={styles.infoValue}>{seasonText}</Text>
             </View>
           )}
         </View>
