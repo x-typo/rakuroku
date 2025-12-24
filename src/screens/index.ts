@@ -5,3 +5,4 @@ export { default as ScheduleScreen } from "./Schedule";
 export { default as ProfileScreen } from "./Profile";
 export { default as MediaDetailScreen } from "./MediaDetail";
 export { default as StudioScreen } from "./Studio";
+export { default as SeasonListScreen } from "./SeasonList";

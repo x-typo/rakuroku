@@ -11,8 +11,11 @@ import {
   ProfileScreen,
   MediaDetailScreen,
   StudioScreen,
+  SeasonListScreen,
 } from "./src/screens";
 import { colors } from "./src/constants";
+
+import { Season } from "./src/types";
 
 export type RootStackParamList = {
   Discover: undefined;
@@ -22,6 +25,7 @@ export type RootStackParamList = {
   Profile: undefined;
   MediaDetail: { mediaId: number };
   Studio: { studioId: number; studioName: string };
+  SeasonList: { season: Season; year: number; label: string };
 };
 
 const Tab = createBottomTabNavigator<RootStackParamList>();
@@ -133,6 +137,15 @@ export default function App() {
         <Tab.Screen
           name="Studio"
           component={StudioScreen}
+          options={{
+            tabBarButton: () => null,
+            tabBarItemStyle: { display: "none" },
+            headerShown: false,
+          }}
+        />
+        <Tab.Screen
+          name="SeasonList"
+          component={SeasonListScreen}
           options={{
             tabBarButton: () => null,
             tabBarItemStyle: { display: "none" },

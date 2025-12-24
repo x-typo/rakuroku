@@ -239,3 +239,19 @@ export interface MediaRelationEdge {
 export interface MediaRelationConnection {
   edges: MediaRelationEdge[];
 }
+
+export type Season = "WINTER" | "SPRING" | "SUMMER" | "FALL";
+
+export interface SeasonalMedia {
+  id: number;
+  title: MediaTitle;
+  coverImage: MediaCoverImage;
+  episodes: number | null;
+  format: string;
+  status: string;
+  averageScore: number | null;
+  popularity: number | null;
+  genres: string[];
+  studios: StudioConnection | null;
+  nextAiringEpisode: NextAiringEpisode | null;
+}

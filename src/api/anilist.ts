@@ -11,6 +11,8 @@ import {
   MediaDetails,
   StudioDetails,
   StudioMedia,
+  Season,
+  SeasonalMedia,
 } from "../types";
 
 const ANILIST_API = "https://graphql.anilist.co";
@@ -590,4 +592,136 @@ export async function fetchStudioDetails(studioId: number): Promise<StudioMedia[
     seen.add(item.id);
     return true;
   });
+}
+
+const SEASONAL_ANIME_QUERY = `
+query ($season: MediaSeason, $seasonYear: Int, $page: Int, $perPage: Int, $sort: [MediaSort]) {
+  Page(page: $page, perPage: $perPage) {
+    pageInfo {
+      hasNextPage
+      currentPage
+    }
+    media(season: $season, seasonYear: $seasonYear, type: ANIME, sort: $sort) {
+      id
+      title {
+        romaji
+        english
+        native
+      }
+      coverImage {
+        large
+        medium
+      }
+      episodes
+      format
+      status
+      averageScore
+      popularity
+      genres
+      studios {
+        edges {
+          isMain
+          node {
+            id
+            name
+            isAnimationStudio
+          }
+        }
+      }
+      nextAiringEpisode {
+        airingAt
+        timeUntilAiring
+        episode
+      }
+    }
+  }
+}
+`;
+
+function getCurrentSeason(): { season: Season; year: number } {
+  const now = new Date();
+  const month = now.getMonth() + 1; // 1-12
+  const year = now.getFullYear();
+
+  let season: Season;
+  if (month >= 1 && month <= 3) {
+    season = "WINTER";
+  } else if (month >= 4 && month <= 6) {
+    season = "SPRING";
+  } else if (month >= 7 && month <= 9) {
+    season = "SUMMER";
+  } else {
+    season = "FALL";
+  }
+
+  return { season, year };
+}
+
+function getNextSeason(current: { season: Season; year: number }): { season: Season; year: number } {
+  const seasonOrder: Season[] = ["WINTER", "SPRING", "SUMMER", "FALL"];
+  const currentIndex = seasonOrder.indexOf(current.season);
+  const nextIndex = (currentIndex + 1) % 4;
+
+  return {
+    season: seasonOrder[nextIndex],
+    year: nextIndex === 0 ? current.year + 1 : current.year,
+  };
+}
+
+export function getSeasonInfo(): {
+  current: { season: Season; year: number };
+  next: { season: Season; year: number };
+} {
+  const current = getCurrentSeason();
+  const next = getNextSeason(current);
+  return { current, next };
+}
+
+export interface SeasonalAnimePage {
+  media: SeasonalMedia[];
+  hasNextPage: boolean;
+  currentPage: number;
+}
+
+export type SeasonalSort = "SCORE_DESC" | "POPULARITY_DESC";
+
+export async function fetchSeasonalAnime(
+  season: Season,
+  year: number,
+  page: number = 1,
+  perPage: number = 20,
+  sort: SeasonalSort = "SCORE_DESC"
+): Promise<SeasonalAnimePage> {
+  const response = await fetch(ANILIST_API, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      query: SEASONAL_ANIME_QUERY,
+      variables: {
+        season,
+        seasonYear: year,
+        page,
+        perPage,
+        sort: [sort],
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    handleApiError(response.status);
+  }
+
+  const json = await response.json();
+
+  if (json.errors) {
+    throw new Error(json.errors[0]?.message || "AniList API error");
+  }
+
+  return {
+    media: json.data.Page.media,
+    hasNextPage: json.data.Page.pageInfo.hasNextPage,
+    currentPage: json.data.Page.pageInfo.currentPage,
+  };
 }
