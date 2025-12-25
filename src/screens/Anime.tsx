@@ -28,10 +28,8 @@ export default function AnimeScreen({
     refreshing,
     searchQuery,
     selectedFilter,
-    showSearch,
     setSearchQuery,
     handleRefresh,
-    handleScroll,
     handleFilterSelect,
     loadData,
   } = useMediaList({
@@ -78,13 +76,11 @@ export default function AnimeScreen({
         <Text style={styles.title}>{selectedFilter}</Text>
       </View>
 
-      {showSearch && (
-        <SearchBar
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          onClear={() => setSearchQuery("")}
-        />
-      )}
+      <SearchBar
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        onClear={() => setSearchQuery("")}
+      />
 
       <FlatList
         data={filteredEntries}
@@ -94,8 +90,6 @@ export default function AnimeScreen({
         ListEmptyComponent={renderEmpty}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

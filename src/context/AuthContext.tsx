@@ -1,7 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import * as SecureStore from "expo-secure-store";
 import * as WebBrowser from "expo-web-browser";
-import * as AuthSession from "expo-auth-session";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -23,14 +22,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const redirectUri = AuthSession.makeRedirectUri({
-    scheme: "rakuroku",
-  });
+  // Use custom scheme directly for native builds
+  const redirectUri = "rakuroku://";
 
   // Log the redirect URI for setting up AniList OAuth
   useEffect(() => {
     console.log("OAuth Redirect URI:", redirectUri);
-  }, [redirectUri]);
+  }, []);
 
   useEffect(() => {
     loadToken();
