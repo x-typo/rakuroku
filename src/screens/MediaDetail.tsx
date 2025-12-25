@@ -18,7 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../constants";
 import { fetchMediaDetails, fetchUserMediaEntry, updateScore, updateStatus, deleteMediaListEntry, addToList, UserMediaEntry } from "../api";
-import { MediaDetails, MediaStatus, MediaRank, Studio, MediaRelationType, MediaRelationEdge } from "../types";
+import { MediaDetails, MediaStatus, MediaRank, MediaRelationType } from "../types";
 import { RootStackParamList } from "../../App";
 import { useAuth } from "../context";
 
@@ -316,8 +316,8 @@ export default function MediaDetailScreen() {
       await updateScore(mediaId, newScore, accessToken);
       setUserEntry({ ...userEntry, score: newScore });
       setScoreModalVisible(false);
-    } catch (err) {
-      console.error("Failed to update score:", err);
+    } catch {
+      // Score update failed silently
     } finally {
       setUpdatingScore(false);
     }
@@ -331,8 +331,8 @@ export default function MediaDetailScreen() {
       await updateStatus(mediaId, newStatus, accessToken);
       setUserEntry({ ...userEntry, status: newStatus });
       setStatusModalVisible(false);
-    } catch (err) {
-      console.error("Failed to update status:", err);
+    } catch {
+      // Status update failed silently
     } finally {
       setUpdatingStatus(false);
     }
@@ -346,8 +346,8 @@ export default function MediaDetailScreen() {
       await deleteMediaListEntry(userEntry.id, accessToken);
       setUserEntry(null);
       setStatusModalVisible(false);
-    } catch (err) {
-      console.error("Failed to delete entry:", err);
+    } catch {
+      // Delete failed silently
     } finally {
       setUpdatingStatus(false);
     }
@@ -361,8 +361,8 @@ export default function MediaDetailScreen() {
       const entry = await addToList(mediaId, status, accessToken);
       setUserEntry(entry);
       setStatusModalVisible(false);
-    } catch (err) {
-      console.error("Failed to add to list:", err);
+    } catch {
+      // Add to list failed silently
     } finally {
       setAddingToList(false);
     }
@@ -439,7 +439,7 @@ export default function MediaDetailScreen() {
           )}
           {seasonalRank && (
             <View style={styles.statItem}>
-              <Ionicons name="trophy" size={16} color="#FFD700" />
+              <Ionicons name="trophy" size={16} color={colors.gold} />
               <Text style={styles.statValue}>
                 #{seasonalRank.rank} {formatSeasonName(seasonalRank.season!)} {seasonalRank.year}
               </Text>

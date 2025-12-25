@@ -22,13 +22,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Use custom scheme directly for native builds
   const redirectUri = "rakuroku://";
-
-  // Log the redirect URI for setting up AniList OAuth
-  useEffect(() => {
-    console.log("OAuth Redirect URI:", redirectUri);
-  }, []);
 
   useEffect(() => {
     loadToken();
@@ -38,8 +32,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const token = await SecureStore.getItemAsync(TOKEN_KEY);
       setAccessToken(token);
-    } catch (error) {
-      console.error("Failed to load token:", error);
+    } catch {
+      // Token load failed, user will need to login
     } finally {
       setIsLoading(false);
     }
@@ -47,7 +41,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async () => {
     if (!CLIENT_ID) {
-      console.error("EXPO_PUBLIC_ANILIST_CLIENT_ID is not set");
       return;
     }
 
@@ -73,8 +66,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
       }
-    } catch (error) {
-      console.error("Login failed:", error);
+    } catch {
+      // Login failed silently
     }
   }, [redirectUri]);
 
@@ -82,8 +75,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await SecureStore.deleteItemAsync(TOKEN_KEY);
       setAccessToken(null);
-    } catch (error) {
-      console.error("Logout failed:", error);
+    } catch {
+      // Logout failed silently
     }
   }, []);
 

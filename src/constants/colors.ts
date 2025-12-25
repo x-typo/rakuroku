@@ -20,6 +20,10 @@ export const colors = {
   dropped: "#EF4444",
   completed: "#3B82F6",
 
+  // Accent colors
+  gold: "#FFD700",
+  surfaceLight: "#2c2c2e",
+
   // Overlay
   overlay: "rgba(0, 0, 0, 0.5)",
 } as const;
