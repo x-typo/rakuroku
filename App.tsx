@@ -3,6 +3,7 @@ import { StatusBar } from "expo-status-bar";
 import { NavigationContainer, DarkTheme } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Ionicons, FontAwesome } from "@expo/vector-icons";
 import {
   DiscoverScreen,
@@ -43,6 +44,7 @@ function MainTabs() {
 
   return (
     <Tab.Navigator
+      initialRouteName="Anime"
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textSecondary,
@@ -136,22 +138,24 @@ function MainTabs() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <NavigationContainer theme={DarkTheme}>
-        <StatusBar style="light" />
-        <Stack.Navigator
-          screenOptions={{
-            headerShown: false,
-            gestureEnabled: true,
-            animation: "slide_from_right",
-          }}
-        >
-          <Stack.Screen name="MainTabs" component={MainTabs} />
-          <Stack.Screen name="MediaDetail" component={MediaDetailScreen} />
-          <Stack.Screen name="Studio" component={StudioScreen} />
-          <Stack.Screen name="SeasonList" component={SeasonListScreen} />
-        </Stack.Navigator>
-      </NavigationContainer>
-    </AuthProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
+        <NavigationContainer theme={DarkTheme}>
+          <StatusBar style="light" />
+          <Stack.Navigator
+            screenOptions={{
+              headerShown: false,
+              gestureEnabled: true,
+              animation: "slide_from_right",
+            }}
+          >
+            <Stack.Screen name="MainTabs" component={MainTabs} />
+            <Stack.Screen name="MediaDetail" component={MediaDetailScreen} />
+            <Stack.Screen name="Studio" component={StudioScreen} />
+            <Stack.Screen name="SeasonList" component={SeasonListScreen} />
+          </Stack.Navigator>
+        </NavigationContainer>
+      </AuthProvider>
+    </GestureHandlerRootView>
   );
 }

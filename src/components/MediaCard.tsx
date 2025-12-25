@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { StyleSheet, Text, View, Image, Pressable, Keyboard, ActivityIndicator } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { Swipeable } from "react-native-gesture-handler";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../constants";
 import { MediaListEntry } from "../types";
@@ -32,11 +33,13 @@ export function MediaCard({ entry, type, onProgressUpdate }: MediaCardProps) {
   const { accessToken, isAuthenticated } = useAuth();
   const [isUpdating, setIsUpdating] = useState(false);
   const [localProgress, setLocalProgress] = useState(entry.progress);
+  const swipeableRef = useRef<Swipeable>(null);
 
   const total = type === "ANIME" ? entry.media.episodes : entry.media.chapters;
   const progressPercent = total ? (localProgress / total) * 100 : 0;
   const showProgressBar = total && total > 0;
   const canIncrement = !total || localProgress < total;
+  const canDecrement = localProgress > 0;
 
   const nextAiring = entry.media.nextAiringEpisode;
   const episodesBehind = nextAiring ? nextAiring.episode - 1 - localProgress : 0;
@@ -61,10 +64,12 @@ export function MediaCard({ entry, type, onProgressUpdate }: MediaCardProps) {
     return null;
   };
 
-  const handleIncrement = async () => {
-    if (!isAuthenticated || !accessToken || isUpdating || !canIncrement) return;
+  const handleProgressChange = async (delta: number) => {
+    if (!isAuthenticated || !accessToken || isUpdating) return;
+    if (delta > 0 && !canIncrement) return;
+    if (delta < 0 && !canDecrement) return;
 
-    const newProgress = localProgress + 1;
+    const newProgress = localProgress + delta;
     setIsUpdating(true);
     setLocalProgress(newProgress);
 
@@ -79,74 +84,105 @@ export function MediaCard({ entry, type, onProgressUpdate }: MediaCardProps) {
     }
   };
 
+  const renderLeftActions = () => {
+    if (!isAuthenticated || !canDecrement) return null;
+    return (
+      <View style={styles.swipeAction}>
+        <Ionicons name="remove-circle" size={28} color={colors.textPrimary} />
+        <Text style={styles.swipeActionText}>-1</Text>
+      </View>
+    );
+  };
+
+  const renderRightActions = () => {
+    if (!isAuthenticated || !canIncrement) return null;
+    return (
+      <View style={[styles.swipeAction, styles.swipeActionRight]}>
+        <Text style={styles.swipeActionText}>+1</Text>
+        <Ionicons name="add-circle" size={28} color={colors.textPrimary} />
+      </View>
+    );
+  };
+
+  const handleSwipeOpen = (direction: "left" | "right") => {
+    if (isUpdating) return;
+    if (direction === "right") {
+      // Opened right side (swiped left) = increment
+      handleProgressChange(1);
+    } else {
+      // Opened left side (swiped right) = decrement
+      handleProgressChange(-1);
+    }
+    swipeableRef.current?.close();
+  };
+
   return (
-    <Pressable
-      style={styles.container}
-      onPress={() => {
-        Keyboard.dismiss();
-        navigation.navigate("MediaDetail", { mediaId: entry.media.id });
-      }}
+    <Swipeable
+      ref={swipeableRef}
+      renderLeftActions={renderLeftActions}
+      renderRightActions={renderRightActions}
+      onSwipeableOpen={handleSwipeOpen}
+      overshootLeft={false}
+      overshootRight={false}
+      containerStyle={styles.swipeableContainer}
     >
-      <View style={styles.row}>
-        <Image
-          source={{ uri: entry.media.coverImage.medium }}
-          style={styles.coverImage}
-        />
-        <View style={styles.info}>
-          <Text style={styles.title} numberOfLines={2}>
-            {entry.media.title.english || entry.media.title.romaji}
-          </Text>
-          <View style={styles.metaRow}>
-            <Text style={styles.progress}>{getProgressText()}</Text>
-            {episodesBehind > 0 && (
-              <Text style={styles.behind}>
-                {episodesBehind} {episodesBehind === 1 ? "episode" : "episodes"} behind
+      <Pressable
+        style={styles.container}
+        onPress={() => {
+          Keyboard.dismiss();
+          navigation.navigate("MediaDetail", { mediaId: entry.media.id });
+        }}
+      >
+        <View style={styles.row}>
+          <Image
+            source={{ uri: entry.media.coverImage.medium }}
+            style={styles.coverImage}
+          />
+          <View style={styles.info}>
+            <Text style={styles.title} numberOfLines={2}>
+              {entry.media.title.english || entry.media.title.romaji}
+            </Text>
+            <View style={styles.metaRow}>
+              <Text style={styles.progress}>{getProgressText()}</Text>
+              {isUpdating && (
+                <ActivityIndicator size="small" color={colors.primary} />
+              )}
+              {episodesBehind > 0 && (
+                <Text style={styles.behind}>
+                  {episodesBehind} {episodesBehind === 1 ? "episode" : "episodes"} behind
+                </Text>
+              )}
+            </View>
+            {nextAiring && type === "ANIME" && (
+              <Text style={styles.nextAiring}>
+                Episode {nextAiring.episode} airing in {formatNextAiring(nextAiring.airingAt)}
               </Text>
             )}
-          </View>
-          {nextAiring && type === "ANIME" && (
-            <Text style={styles.nextAiring}>
-              Episode {nextAiring.episode} airing in {formatNextAiring(nextAiring.airingAt)}
-            </Text>
-          )}
-          {getScoreText() && (
-            <Text style={[styles.score, { color: getScoreColor() }]}>{getScoreText()}</Text>
-          )}
-        </View>
-        {isAuthenticated && canIncrement && (
-          <Pressable
-            style={styles.incrementButton}
-            onPress={(e) => {
-              e.stopPropagation();
-              handleIncrement();
-            }}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            {isUpdating ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <Ionicons name="add-circle" size={32} color={colors.primary} />
+            {getScoreText() && (
+              <Text style={[styles.score, { color: getScoreColor() }]}>{getScoreText()}</Text>
             )}
-          </Pressable>
-        )}
-      </View>
-      {showProgressBar && (
-        <View style={styles.progressBarContainer}>
-          <View
-            style={[styles.progressBar, { width: `${Math.min(progressPercent, 100)}%` }]}
-          />
+          </View>
         </View>
-      )}
-    </Pressable>
+        {showProgressBar && (
+          <View style={styles.progressBarContainer}>
+            <View
+              style={[styles.progressBar, { width: `${Math.min(progressPercent, 100)}%` }]}
+            />
+          </View>
+        )}
+      </Pressable>
+    </Swipeable>
   );
 }
 
 const styles = StyleSheet.create({
+  swipeableContainer: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+  },
   container: {
     backgroundColor: colors.surface,
     borderRadius: 12,
-    marginHorizontal: 16,
-    marginBottom: 12,
     overflow: "hidden",
   },
   row: {
@@ -198,9 +234,21 @@ const styles = StyleSheet.create({
     height: "100%",
     backgroundColor: colors.primary,
   },
-  incrementButton: {
+  swipeAction: {
+    backgroundColor: colors.primary,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 12,
+    flexDirection: "row",
+    paddingHorizontal: 20,
+    gap: 4,
+    borderRadius: 12,
+  },
+  swipeActionRight: {
+    backgroundColor: colors.primary,
+  },
+  swipeActionText: {
+    color: colors.textPrimary,
+    fontSize: 16,
+    fontWeight: "600",
   },
 });

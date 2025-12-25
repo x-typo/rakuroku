@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   StyleSheet,
   Text,
@@ -17,7 +17,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../constants";
-import { fetchMediaDetails, fetchUserMediaEntry, updateScore, updateStatus, deleteMediaListEntry, addToList, UserMediaEntry } from "../api";
+import { fetchMediaDetails, fetchUserMediaEntry, updateScore, updateStatus, deleteMediaListEntry, addToList, updateProgress, UserMediaEntry } from "../api";
 import { MediaDetails, MediaStatus, MediaRank, MediaRelationType } from "../types";
 import { RootStackParamList } from "../../App";
 import { useAuth } from "../context";
@@ -226,6 +226,8 @@ export default function MediaDetailScreen() {
   const [statusModalVisible, setStatusModalVisible] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [addingToList, setAddingToList] = useState(false);
+  const [progressModalVisible, setProgressModalVisible] = useState(false);
+  const [updatingProgress, setUpdatingProgress] = useState(false);
 
   const loadData = useCallback(async (showRefreshing = false) => {
     if (showRefreshing) {
@@ -368,6 +370,24 @@ export default function MediaDetailScreen() {
     }
   };
 
+  const handleProgressUpdate = async (delta: number) => {
+    if (!accessToken || !userEntry) return;
+
+    const total = media?.type === "ANIME" ? media?.episodes : media?.chapters;
+    const newProgress = Math.max(0, userEntry.progress + delta);
+    if (total && newProgress > total) return;
+
+    setUpdatingProgress(true);
+    try {
+      await updateProgress(mediaId, newProgress, accessToken);
+      setUserEntry({ ...userEntry, progress: newProgress });
+    } catch {
+      // Progress update failed silently
+    } finally {
+      setUpdatingProgress(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <ScrollView
@@ -430,10 +450,26 @@ export default function MediaDetailScreen() {
             </View>
           )}
           {canEditScore && (
-            <Pressable style={styles.statItem} onPress={() => setScoreModalVisible(true)}>
+            <Pressable
+              style={styles.statItemTouchable}
+              onPress={() => setScoreModalVisible(true)}
+              hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+            >
               <Ionicons name="star" size={16} color={colors.warning} />
               <Text style={styles.statValue}>
                 {userEntry.score > 0 ? `${userEntry.score}/10` : "Rate"}
+              </Text>
+            </Pressable>
+          )}
+          {canEditScore && (
+            <Pressable
+              style={styles.statItemTouchable}
+              onPress={() => setProgressModalVisible(true)}
+              hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+            >
+              <Ionicons name="film" size={16} color={colors.textSecondary} />
+              <Text style={styles.statValue}>
+                {userEntry.progress}/{media.type === "ANIME" ? (media.episodes || "?") : (media.chapters || "?")}
               </Text>
             </Pressable>
           )}
@@ -461,57 +497,87 @@ export default function MediaDetailScreen() {
         )}
 
         <View style={styles.infoSection}>
-          {studio && (
-            <Pressable
-              style={styles.infoRow}
-              onPress={() => navigation.navigate("Studio", { studioId: studio.id, studioName: studio.name })}
-            >
-              <Text style={styles.infoLabel}>Studio</Text>
-              <Text style={[styles.infoValue, styles.studioLink]}>{studio.name}</Text>
-            </Pressable>
-          )}
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Format</Text>
-            <Text style={styles.infoValue}>{formatFormat(media.format)}</Text>
-          </View>
-          {media.type === "ANIME" && media.episodes && (
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Episodes</Text>
-              <Text style={styles.infoValue}>{media.episodes}</Text>
-            </View>
-          )}
-          {media.type === "MANGA" && media.chapters && (
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Chapters</Text>
-              <Text style={styles.infoValue}>{media.chapters}</Text>
-            </View>
-          )}
-          {media.type === "MANGA" && media.volumes && (
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Volumes</Text>
-              <Text style={styles.infoValue}>{media.volumes}</Text>
-            </View>
-          )}
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Status</Text>
-            <Text style={styles.infoValue}>{formatStatus(media.status)}</Text>
-          </View>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Start Date</Text>
-            <Text style={styles.infoValue}>{formatDate(media.startDate)}</Text>
-          </View>
-          {media.endDate?.year && (
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>End Date</Text>
-              <Text style={styles.infoValue}>{formatDate(media.endDate)}</Text>
-            </View>
-          )}
-          {seasonText && (
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Season</Text>
-              <Text style={styles.infoValue}>{seasonText}</Text>
-            </View>
-          )}
+          {(() => {
+            const rows: React.ReactNode[] = [];
+            if (studio) {
+              rows.push(
+                <Pressable
+                  key="studio"
+                  style={styles.infoRow}
+                  onPress={() => navigation.navigate("Studio", { studioId: studio.id, studioName: studio.name })}
+                >
+                  <Text style={styles.infoLabel}>Studio</Text>
+                  <Text style={[styles.infoValue, styles.studioLink]}>{studio.name}</Text>
+                </Pressable>
+              );
+            }
+            rows.push(
+              <View key="format" style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Format</Text>
+                <Text style={styles.infoValue}>{formatFormat(media.format)}</Text>
+              </View>
+            );
+            if (media.type === "ANIME" && media.episodes) {
+              rows.push(
+                <View key="episodes" style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Episodes</Text>
+                  <Text style={styles.infoValue}>{media.episodes}</Text>
+                </View>
+              );
+            }
+            if (media.type === "MANGA" && media.chapters) {
+              rows.push(
+                <View key="chapters" style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Chapters</Text>
+                  <Text style={styles.infoValue}>{media.chapters}</Text>
+                </View>
+              );
+            }
+            if (media.type === "MANGA" && media.volumes) {
+              rows.push(
+                <View key="volumes" style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Volumes</Text>
+                  <Text style={styles.infoValue}>{media.volumes}</Text>
+                </View>
+              );
+            }
+            rows.push(
+              <View key="status" style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Status</Text>
+                <Text style={styles.infoValue}>{formatStatus(media.status)}</Text>
+              </View>
+            );
+            rows.push(
+              <View key="startDate" style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Start Date</Text>
+                <Text style={styles.infoValue}>{formatDate(media.startDate)}</Text>
+              </View>
+            );
+            if (media.endDate?.year) {
+              rows.push(
+                <View key="endDate" style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>End Date</Text>
+                  <Text style={styles.infoValue}>{formatDate(media.endDate)}</Text>
+                </View>
+              );
+            }
+            if (seasonText) {
+              rows.push(
+                <View key="season" style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Season</Text>
+                  <Text style={styles.infoValue}>{seasonText}</Text>
+                </View>
+              );
+            }
+            // Remove border from last row
+            return rows.map((row, index) =>
+              index === rows.length - 1
+                ? React.cloneElement(row as React.ReactElement<{ style?: object }>, {
+                    style: [styles.infoRow, styles.infoRowLast],
+                  })
+                : row
+            );
+          })()}
         </View>
 
         {media.description && (
@@ -668,6 +734,69 @@ export default function MediaDetailScreen() {
           </View>
         </Pressable>
       </Modal>
+
+      <Modal
+        visible={progressModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setProgressModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setProgressModalVisible(false)}
+        >
+          <View style={styles.progressModal}>
+            <Text style={styles.progressModalTitle}>
+              {media?.type === "ANIME" ? "Episode" : "Chapter"} Progress
+            </Text>
+            <View style={styles.progressControls}>
+              <Pressable
+                style={[styles.progressButton, (!userEntry || userEntry.progress <= 0) && styles.progressButtonDisabled]}
+                onPress={() => handleProgressUpdate(-1)}
+                disabled={updatingProgress || !userEntry || userEntry.progress <= 0}
+              >
+                <Ionicons name="remove" size={32} color={colors.textPrimary} />
+              </Pressable>
+              <View style={styles.progressDisplay}>
+                {updatingProgress ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                  <Text style={styles.progressValue}>
+                    {userEntry?.progress || 0}
+                  </Text>
+                )}
+                <Text style={styles.progressTotal}>
+                  / {media?.type === "ANIME" ? (media?.episodes || "?") : (media?.chapters || "?")}
+                </Text>
+              </View>
+              <Pressable
+                style={[
+                  styles.progressButton,
+                  (() => {
+                    if (!userEntry) return null;
+                    if (media?.type === "ANIME" && media?.episodes && userEntry.progress >= media.episodes) {
+                      return styles.progressButtonDisabled;
+                    }
+                    if (media?.type === "MANGA" && media?.chapters && userEntry.progress >= media.chapters) {
+                      return styles.progressButtonDisabled;
+                    }
+                    return null;
+                  })(),
+                ]}
+                onPress={() => handleProgressUpdate(1)}
+                disabled={
+                  updatingProgress ||
+                  !userEntry ||
+                  (media?.type === "ANIME" && media?.episodes ? userEntry.progress >= media.episodes : false) ||
+                  (media?.type === "MANGA" && media?.chapters ? userEntry.progress >= media.chapters : false)
+                }
+              >
+                <Ionicons name="add" size={32} color={colors.textPrimary} />
+              </Pressable>
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -766,6 +895,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
   },
+  statItemTouchable: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    marginVertical: -8,
+    marginHorizontal: -4,
+  },
   statValue: {
     fontSize: 14,
     color: colors.textPrimary,
@@ -804,6 +942,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: colors.background,
+  },
+  infoRowLast: {
+    borderBottomWidth: 0,
   },
   infoLabel: {
     fontSize: 14,
@@ -978,5 +1119,52 @@ const styles = StyleSheet.create({
   },
   statusLoading: {
     marginTop: 16,
+  },
+  progressModal: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 24,
+    width: "85%",
+    maxWidth: 340,
+  },
+  progressModalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: colors.textPrimary,
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  progressControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 24,
+  },
+  progressButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.background,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  progressButtonDisabled: {
+    opacity: 0.4,
+  },
+  progressDisplay: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    minWidth: 80,
+    justifyContent: "center",
+  },
+  progressValue: {
+    fontSize: 32,
+    fontWeight: "bold",
+    color: colors.textPrimary,
+  },
+  progressTotal: {
+    fontSize: 18,
+    color: colors.textSecondary,
+    marginLeft: 2,
   },
 });
