@@ -27,6 +27,7 @@ export interface NextAiringEpisode {
 
 export interface Media {
   id: number;
+  isAdult?: boolean;
   title: MediaTitle;
   coverImage: MediaCoverImage;
   episodes: number | null;

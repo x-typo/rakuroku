@@ -100,6 +100,7 @@ query ($page: Int, $airingAt_greater: Int, $airingAt_lesser: Int) {
       episode
       media {
         id
+        isAdult
         title {
           romaji
           english
@@ -497,7 +498,11 @@ export async function fetchAiringSchedule(
     }
 
     const pageData: AiringSchedulePage = json.data.Page;
-    allSchedules.push(...pageData.airingSchedules);
+    // Filter out adult content
+    const filteredSchedules = pageData.airingSchedules.filter(
+      (schedule) => !schedule.media.isAdult
+    );
+    allSchedules.push(...filteredSchedules);
 
     hasNextPage = pageData.pageInfo.hasNextPage;
     page++;
