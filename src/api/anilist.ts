@@ -951,6 +951,50 @@ export async function deleteMediaListEntry(
   return json.data.DeleteMediaListEntry.deleted;
 }
 
+const ADD_TO_LIST_MUTATION = `
+mutation ($mediaId: Int, $status: MediaListStatus) {
+  SaveMediaListEntry(mediaId: $mediaId, status: $status) {
+    id
+    status
+    score
+    progress
+  }
+}
+`;
+
+export async function addToList(
+  mediaId: number,
+  status: MediaStatus,
+  accessToken: string
+): Promise<UserMediaEntry> {
+  const response = await fetch(ANILIST_API, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      query: ADD_TO_LIST_MUTATION,
+      variables: {
+        mediaId,
+        status,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    handleApiError(response.status);
+  }
+
+  const json = await response.json();
+
+  if (json.errors) {
+    throw new Error(json.errors[0]?.message || "Failed to add to list");
+  }
+
+  return json.data.SaveMediaListEntry;
+}
+
 const SEARCH_MEDIA_QUERY = `
 query ($search: String, $page: Int, $perPage: Int) {
   Page(page: $page, perPage: $perPage) {
@@ -958,8 +1002,9 @@ query ($search: String, $page: Int, $perPage: Int) {
       hasNextPage
       currentPage
     }
-    media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
+    media(search: $search, sort: SEARCH_MATCH) {
       id
+      type
       title {
         romaji
         english
@@ -970,6 +1015,7 @@ query ($search: String, $page: Int, $perPage: Int) {
         medium
       }
       episodes
+      chapters
       format
       status
       averageScore

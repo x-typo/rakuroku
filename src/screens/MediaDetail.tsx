@@ -17,7 +17,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../constants";
-import { fetchMediaDetails, fetchUserMediaEntry, updateScore, updateStatus, deleteMediaListEntry, UserMediaEntry } from "../api";
+import { fetchMediaDetails, fetchUserMediaEntry, updateScore, updateStatus, deleteMediaListEntry, addToList, UserMediaEntry } from "../api";
 import { MediaDetails, MediaStatus, MediaRank, Studio, MediaRelationType, MediaRelationEdge } from "../types";
 import { RootStackParamList } from "../../App";
 import { useAuth } from "../context";
@@ -225,6 +225,7 @@ export default function MediaDetailScreen() {
   const [updatingScore, setUpdatingScore] = useState(false);
   const [statusModalVisible, setStatusModalVisible] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [addingToList, setAddingToList] = useState(false);
 
   const loadData = useCallback(async (showRefreshing = false) => {
     if (showRefreshing) {
@@ -352,6 +353,21 @@ export default function MediaDetailScreen() {
     }
   };
 
+  const handleAddToList = async (status: MediaStatus) => {
+    if (!accessToken || !media) return;
+
+    setAddingToList(true);
+    try {
+      const entry = await addToList(mediaId, status, accessToken);
+      setUserEntry(entry);
+      setStatusModalVisible(false);
+    } catch (err) {
+      console.error("Failed to add to list:", err);
+    } finally {
+      setAddingToList(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <ScrollView
@@ -380,6 +396,14 @@ export default function MediaDetailScreen() {
             {studio && (
               <Pressable onPress={() => navigation.navigate("Studio", { studioId: studio.id, studioName: studio.name })}>
                 <Text style={styles.studio}>{studio.name}</Text>
+              </Pressable>
+            )}
+            {isAuthenticated && !userEntry && (
+              <Pressable
+                style={styles.addButton}
+                onPress={() => setStatusModalVisible(true)}
+              >
+                <Text style={styles.addButtonText}>Add</Text>
               </Pressable>
             )}
             {userStatusLabel && userStatusColor && (
@@ -586,7 +610,9 @@ export default function MediaDetailScreen() {
           onPress={() => setStatusModalVisible(false)}
         >
           <View style={styles.statusModal}>
-            <Text style={styles.statusModalTitle}>Update Status</Text>
+            <Text style={styles.statusModalTitle}>
+              {userEntry ? "Update Status" : "Add to List"}
+            </Text>
             <View style={styles.statusOptions}>
               {(
                 [
@@ -602,8 +628,8 @@ export default function MediaDetailScreen() {
                     styles.statusOption,
                     userEntry?.status === item.status && styles.statusOptionSelected,
                   ]}
-                  onPress={() => handleStatusUpdate(item.status)}
-                  disabled={updatingStatus}
+                  onPress={() => userEntry ? handleStatusUpdate(item.status) : handleAddToList(item.status)}
+                  disabled={updatingStatus || addingToList}
                 >
                   <Text
                     style={[
@@ -619,14 +645,16 @@ export default function MediaDetailScreen() {
                 </Pressable>
               ))}
             </View>
-            <Pressable
-              style={styles.deleteButton}
-              onPress={handleDeleteEntry}
-              disabled={updatingStatus}
-            >
-              <Text style={styles.deleteButtonText}>Delete from List</Text>
-            </Pressable>
-            {updatingStatus && (
+            {userEntry && (
+              <Pressable
+                style={styles.deleteButton}
+                onPress={handleDeleteEntry}
+                disabled={updatingStatus}
+              >
+                <Text style={styles.deleteButtonText}>Delete from List</Text>
+              </Pressable>
+            )}
+            {(updatingStatus || addingToList) && (
               <ActivityIndicator
                 size="small"
                 color={colors.primary}
@@ -693,6 +721,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.primary,
     marginBottom: 4,
+  },
+  addButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginTop: 8,
+    alignSelf: "flex-start",
+    minWidth: 50,
+    alignItems: "center",
+  },
+  addButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.textPrimary,
   },
   season: {
     fontSize: 13,

@@ -244,9 +244,11 @@ export type Season = "WINTER" | "SPRING" | "SUMMER" | "FALL";
 
 export interface SeasonalMedia {
   id: number;
+  type?: MediaType;
   title: MediaTitle;
   coverImage: MediaCoverImage;
   episodes: number | null;
+  chapters?: number | null;
   format: string;
   status: string;
   averageScore: number | null;
