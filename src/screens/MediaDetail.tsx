@@ -393,11 +393,6 @@ export default function MediaDetailScreen() {
             <Text style={styles.title} numberOfLines={3}>
               {title}
             </Text>
-            {studio && (
-              <Pressable onPress={() => navigation.navigate("Studio", { studioId: studio.id, studioName: studio.name })}>
-                <Text style={styles.studio}>{studio.name}</Text>
-              </Pressable>
-            )}
             {isAuthenticated && !userEntry && (
               <Pressable
                 style={styles.addButton}
@@ -466,6 +461,15 @@ export default function MediaDetailScreen() {
         )}
 
         <View style={styles.infoSection}>
+          {studio && (
+            <Pressable
+              style={styles.infoRow}
+              onPress={() => navigation.navigate("Studio", { studioId: studio.id, studioName: studio.name })}
+            >
+              <Text style={styles.infoLabel}>Studio</Text>
+              <Text style={[styles.infoValue, styles.studioLink]}>{studio.name}</Text>
+            </Pressable>
+          )}
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Format</Text>
             <Text style={styles.infoValue}>{formatFormat(media.format)}</Text>
@@ -717,10 +721,8 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: 8,
   },
-  studio: {
-    fontSize: 14,
+  studioLink: {
     color: colors.primary,
-    marginBottom: 4,
   },
   addButton: {
     backgroundColor: colors.primary,
