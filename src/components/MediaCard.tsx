@@ -85,32 +85,32 @@ export function MediaCard({ entry, type, onProgressUpdate }: MediaCardProps) {
   };
 
   const renderLeftActions = () => {
-    if (!isAuthenticated || !canDecrement) return null;
+    if (!isAuthenticated || !canIncrement) return null;
     return (
       <View style={styles.swipeAction}>
-        <Ionicons name="remove-circle" size={28} color={colors.textPrimary} />
-        <Text style={styles.swipeActionText}>-1</Text>
+        <Ionicons name="add-circle" size={28} color={colors.textPrimary} />
+        <Text style={styles.swipeActionText}>+1</Text>
       </View>
     );
   };
 
   const renderRightActions = () => {
-    if (!isAuthenticated || !canIncrement) return null;
+    if (!isAuthenticated || !canDecrement) return null;
     return (
       <View style={[styles.swipeAction, styles.swipeActionRight]}>
-        <Text style={styles.swipeActionText}>+1</Text>
-        <Ionicons name="add-circle" size={28} color={colors.textPrimary} />
+        <Text style={styles.swipeActionText}>-1</Text>
+        <Ionicons name="remove-circle" size={28} color={colors.textPrimary} />
       </View>
     );
   };
 
   const handleSwipeOpen = (direction: "left" | "right") => {
     if (isUpdating) return;
-    if (direction === "right") {
-      // Opened right side (swiped left) = increment
+    if (direction === "left") {
+      // Opened left side (swiped right) = increment
       handleProgressChange(1);
     } else {
-      // Opened left side (swiped right) = decrement
+      // Opened right side (swiped left) = decrement
       handleProgressChange(-1);
     }
     swipeableRef.current?.close();
