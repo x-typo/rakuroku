@@ -15,57 +15,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../constants";
 import { fetchSeasonalAnime, fetchMediaList } from "../api";
-import { SeasonalMedia, Season, MediaListEntry, MediaStatus } from "../types";
+import { SeasonalMedia, MediaListEntry, MediaStatus } from "../types";
 import { RootStackParamList } from "../../App";
+import { formatSeasonName, getMainStudioName, getStatusColor, getStatusLabel } from "../utils";
 
 type SeasonListRouteProp = RouteProp<RootStackParamList, "SeasonList">;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
-
-function formatSeasonName(season: Season): string {
-  return season.charAt(0) + season.slice(1).toLowerCase();
-}
-
-function getMainStudio(media: SeasonalMedia): string | null {
-  if (!media.studios?.edges) return null;
-  const mainStudio = media.studios.edges.find((e) => e.isMain);
-  return mainStudio?.node.name || media.studios.edges[0]?.node.name || null;
-}
-
-function getStatusColor(status: MediaStatus | null): string | null {
-  switch (status) {
-    case "CURRENT":
-      return colors.watching;
-    case "COMPLETED":
-      return colors.completed;
-    case "DROPPED":
-      return colors.dropped;
-    case "PAUSED":
-      return colors.warning;
-    case "PLANNING":
-      return colors.textSecondary;
-    default:
-      return null;
-  }
-}
-
-function getStatusLabel(status: MediaStatus | null): string | null {
-  switch (status) {
-    case "CURRENT":
-      return "Watching";
-    case "COMPLETED":
-      return "Completed";
-    case "DROPPED":
-      return "Dropped";
-    case "PAUSED":
-      return "Paused";
-    case "PLANNING":
-      return "Planning";
-    case "REPEATING":
-      return "Rewatching";
-    default:
-      return null;
-  }
-}
 
 export default function SeasonListScreen() {
   const route = useRoute<SeasonListRouteProp>();
@@ -140,7 +95,7 @@ export default function SeasonListScreen() {
   const renderItem = useCallback(
     ({ item }: { item: SeasonalMedia }) => {
       const title = item.title.english || item.title.romaji;
-      const studio = getMainStudio(item);
+      const studio = getMainStudioName(item);
       const userStatus = userStatusMap.get(item.id) || null;
       const statusLabel = getStatusLabel(userStatus);
       const statusColor = getStatusColor(userStatus);

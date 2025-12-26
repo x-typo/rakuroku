@@ -19,18 +19,9 @@ import { fetchSeasonalAnime, getSeasonInfo, searchMedia } from "../api";
 import { SeasonalMedia, Season } from "../types";
 import { RootStackParamList } from "../../App";
 import { SearchBar } from "../components";
+import { formatSeasonName, getMainStudioName } from "../utils";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
-
-function formatSeasonName(season: Season): string {
-  return season.charAt(0) + season.slice(1).toLowerCase();
-}
-
-function getMainStudio(media: SeasonalMedia): string | null {
-  if (!media.studios?.edges) return null;
-  const mainStudio = media.studios.edges.find((e) => e.isMain);
-  return mainStudio?.node.name || media.studios.edges[0]?.node.name || null;
-}
 
 export default function DiscoverScreen() {
   const navigation = useNavigation<NavigationProp>();
@@ -142,7 +133,7 @@ export default function DiscoverScreen() {
 
   const renderMediaCard = (item: SeasonalMedia) => {
     const title = item.title.english || item.title.romaji;
-    const studio = getMainStudio(item);
+    const studio = getMainStudioName(item);
 
     return (
       <Pressable
@@ -172,7 +163,7 @@ export default function DiscoverScreen() {
   const renderSearchResultItem = useCallback(
     ({ item }: { item: SeasonalMedia }) => {
       const title = item.title.english || item.title.romaji;
-      const studio = getMainStudio(item);
+      const studio = getMainStudioName(item);
 
       return (
         <Pressable

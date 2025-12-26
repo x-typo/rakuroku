@@ -9,6 +9,7 @@ import { MediaListEntry } from "../types";
 import { updateProgress } from "../api";
 import { useAuth } from "../context";
 import { RootStackParamList } from "../../App";
+import { formatNextAiring } from "../utils";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -16,16 +17,6 @@ interface MediaCardProps {
   entry: MediaListEntry;
   type: "ANIME" | "MANGA";
   onProgressUpdate?: (entryId: number, newProgress: number) => void;
-}
-
-function formatNextAiring(airingAt: number): string {
-  const now = Date.now() / 1000;
-  const diff = airingAt - now;
-
-  if (diff < 0) return "";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-  return `${Math.floor(diff / 86400)}d`;
 }
 
 export function MediaCard({ entry, type, onProgressUpdate }: MediaCardProps) {

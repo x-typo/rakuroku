@@ -17,41 +17,11 @@ import { colors } from "../constants";
 import { fetchAiringSchedule, fetchMediaList } from "../api";
 import { AiringSchedule, MediaListEntry, MediaStatus } from "../types";
 import { RootStackParamList } from "../../App";
+import { formatAiringTime, getStatusColor, getStatusLabel } from "../utils";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const DAYS = ["S", "M", "T", "W", "T", "F", "S"] as const;
-
-function formatAiringTime(airingAt: number): string {
-  const date = new Date(airingAt * 1000);
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function getStatusColor(status: MediaStatus | null): string | null {
-  switch (status) {
-    case "CURRENT":
-      return colors.watching;
-    case "DROPPED":
-      return colors.dropped;
-    case "COMPLETED":
-      return colors.completed;
-    default:
-      return null;
-  }
-}
-
-function getStatusLabel(status: MediaStatus | null): string | null {
-  switch (status) {
-    case "CURRENT":
-      return "Watching";
-    case "DROPPED":
-      return "Dropped";
-    case "COMPLETED":
-      return "Completed";
-    default:
-      return null;
-  }
-}
 
 export default function ScheduleScreen() {
   const navigation = useNavigation<NavigationProp>();

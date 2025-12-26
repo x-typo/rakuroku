@@ -17,66 +17,10 @@ import { colors } from "../constants";
 import { fetchStudioDetails, fetchMediaList } from "../api";
 import { StudioMedia, MediaListEntry, MediaStatus } from "../types";
 import { RootStackParamList } from "../../App";
+import { formatYear, formatFormat, getStatusColor, getStatusLabel } from "../utils";
 
 type StudioRouteProp = RouteProp<RootStackParamList, "Studio">;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
-
-function formatYear(startDate: { year: number | null } | null): string {
-  if (!startDate?.year) return "";
-  return startDate.year.toString();
-}
-
-function formatFormat(format: string): string {
-  const formatMap: Record<string, string> = {
-    TV: "TV",
-    TV_SHORT: "TV Short",
-    MOVIE: "Movie",
-    SPECIAL: "Special",
-    OVA: "OVA",
-    ONA: "ONA",
-    MUSIC: "Music",
-    MANGA: "Manga",
-    NOVEL: "Light Novel",
-    ONE_SHOT: "One Shot",
-  };
-  return formatMap[format] || format;
-}
-
-function getStatusColor(status: MediaStatus | null): string | null {
-  switch (status) {
-    case "CURRENT":
-      return colors.watching;
-    case "COMPLETED":
-      return colors.completed;
-    case "DROPPED":
-      return colors.dropped;
-    case "PAUSED":
-      return colors.warning;
-    case "PLANNING":
-      return colors.textSecondary;
-    default:
-      return null;
-  }
-}
-
-function getStatusLabel(status: MediaStatus | null): string | null {
-  switch (status) {
-    case "CURRENT":
-      return "Watching";
-    case "COMPLETED":
-      return "Completed";
-    case "DROPPED":
-      return "Dropped";
-    case "PAUSED":
-      return "Paused";
-    case "PLANNING":
-      return "Planning";
-    case "REPEATING":
-      return "Rewatching";
-    default:
-      return null;
-  }
-}
 
 export default function StudioScreen() {
   const route = useRoute<StudioRouteProp>();
