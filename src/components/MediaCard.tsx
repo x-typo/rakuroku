@@ -244,7 +244,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   swipeActionRight: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.error,
   },
   swipeActionText: {
     color: colors.textPrimary,
