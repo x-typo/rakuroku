@@ -645,6 +645,7 @@ query ($season: MediaSeason, $seasonYear: Int, $page: Int, $perPage: Int, $sort:
     }
     media(season: $season, seasonYear: $seasonYear, type: ANIME, sort: $sort) {
       id
+      isAdult
       title {
         romaji
         english
@@ -761,8 +762,13 @@ export async function fetchSeasonalAnime(
     throw new Error(json.errors[0]?.message || "AniList API error");
   }
 
+  // Filter out adult content
+  const filteredMedia = json.data.Page.media.filter(
+    (media: SeasonalMedia) => !media.isAdult
+  );
+
   return {
-    media: json.data.Page.media,
+    media: filteredMedia,
     hasNextPage: json.data.Page.pageInfo.hasNextPage,
     currentPage: json.data.Page.pageInfo.currentPage,
   };

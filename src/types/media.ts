@@ -245,6 +245,7 @@ export type Season = "WINTER" | "SPRING" | "SUMMER" | "FALL";
 
 export interface SeasonalMedia {
   id: number;
+  isAdult?: boolean;
   type?: MediaType;
   title: MediaTitle;
   coverImage: MediaCoverImage;
