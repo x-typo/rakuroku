@@ -188,7 +188,15 @@ export default function MediaDetailScreen() {
     setUpdatingStatus(true);
     try {
       await updateStatus(mediaId, newStatus, accessToken);
-      setUserEntry({ ...userEntry, status: newStatus });
+      let newScore = userEntry.score;
+
+      // Auto-rate as 1 star when dropping
+      if (newStatus === "DROPPED") {
+        await updateScore(mediaId, 1, accessToken);
+        newScore = 1;
+      }
+
+      setUserEntry({ ...userEntry, status: newStatus, score: newScore });
       setStatusModalVisible(false);
     } catch {
       // Status update failed silently
