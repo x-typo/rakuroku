@@ -12,6 +12,7 @@ import {
   Share,
   Modal,
 } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { RouteProp, useRoute, useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
@@ -85,6 +86,7 @@ export default function MediaDetailScreen() {
   const [addingToList, setAddingToList] = useState(false);
   const [progressModalVisible, setProgressModalVisible] = useState(false);
   const [updatingProgress, setUpdatingProgress] = useState(false);
+  const [showCopied, setShowCopied] = useState(false);
 
   const loadData = useCallback(async (showRefreshing = false) => {
     if (showRefreshing) {
@@ -160,11 +162,17 @@ export default function MediaDetailScreen() {
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `${title} - https://anilist.co/${media.type.toLowerCase()}/${media.id}`,
+        message: `https://anilist.co/${media.type.toLowerCase()}/${media.id}`,
       });
-    } catch (error) {
-      // Share cancelled or failed
+    } catch {
+      // Intentional no-op - share cancelled by user
     }
+  };
+
+  const handleCopy = async () => {
+    await Clipboard.setStringAsync(title);
+    setShowCopied(true);
+    setTimeout(() => setShowCopied(false), 1500);
   };
 
   const handleScoreUpdate = async (newScore: number) => {
@@ -346,8 +354,16 @@ export default function MediaDetailScreen() {
               </Text>
             </View>
           )}
-          <Pressable onPress={handleShare} style={styles.shareButton}>
-            <Ionicons name="share-outline" size={24} color={colors.textPrimary} />
+        </View>
+
+        <View style={styles.actionsRow}>
+          <Pressable onPress={handleCopy} style={styles.actionButton}>
+            <Ionicons name="copy-outline" size={20} color={colors.textPrimary} />
+            <Text style={styles.actionText}>{showCopied ? "Copied" : "Copy"}</Text>
+          </Pressable>
+          <Pressable onPress={handleShare} style={styles.actionButton}>
+            <Ionicons name="share-outline" size={20} color={colors.textPrimary} />
+            <Text style={styles.actionText}>Share</Text>
           </Pressable>
         </View>
 
@@ -773,9 +789,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textPrimary,
   },
-  shareButton: {
-    marginLeft: "auto",
-    padding: 4,
+  actionsRow: {
+    flexDirection: "row",
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    gap: 16,
+  },
+  actionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  actionText: {
+    fontSize: 14,
+    color: colors.textPrimary,
   },
   genresContainer: {
     flexDirection: "row",
