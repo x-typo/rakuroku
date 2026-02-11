@@ -40,16 +40,13 @@ export function getStatusLabel(status: MediaStatus | null, type?: "ANIME" | "MAN
 
 // Season/date formatters
 export function formatSeasonName(season: Season | string): string {
-  if (typeof season === "string") {
-    const seasonMap: Record<string, string> = {
-      WINTER: "Winter",
-      SPRING: "Spring",
-      SUMMER: "Summer",
-      FALL: "Fall",
-    };
-    return seasonMap[season] || season.charAt(0) + season.slice(1).toLowerCase();
-  }
-  return season.charAt(0) + season.slice(1).toLowerCase();
+  const seasonMap: Record<string, string> = {
+    WINTER: "Winter",
+    SPRING: "Spring",
+    SUMMER: "Summer",
+    FALL: "Fall",
+  };
+  return seasonMap[season] || season.charAt(0) + season.slice(1).toLowerCase();
 }
 
 export function formatSeason(season: string | null, year: number | null): string {

@@ -3,6 +3,7 @@ import {
   StyleSheet,
   Text,
   View,
+  Alert,
   TouchableOpacity,
   FlatList,
   RefreshControl,
@@ -13,6 +14,8 @@ import {
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { Ionicons } from "@expo/vector-icons";
+import * as WebBrowser from "expo-web-browser";
 import { colors } from "../constants";
 import { fetchAiringSchedule, fetchMediaList } from "../api";
 import { AiringSchedule, MediaListEntry, MediaStatus } from "../types";
@@ -23,6 +26,85 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const DAYS = ["S", "M", "T", "W", "T", "F", "S"] as const;
 
+const REDDIT_USER_AGENT = "rakuroku/1.0 (reddit-discussion-linker)";
+
+type RedditSearchResponse = {
+  data?: {
+    children?: Array<{
+      data?: RedditSearchPost;
+    }>;
+  };
+};
+
+type RedditSearchPost = {
+  author?: string;
+  subreddit?: string;
+  title?: string;
+  permalink?: string;
+  created_utc?: number;
+  selftext?: string;
+};
+
+function parseEpisodeFromDiscussionTitle(title: string): number | null {
+  const match = title.match(/-\s*Episode\s+(\d+)\s+discussion(?:\s*-\s*FINAL)?\s*$/i);
+  if (!match) return null;
+  const episode = Number(match[1]);
+  return Number.isFinite(episode) ? episode : null;
+}
+
+async function findAutoLoveponDiscussionUrl(params: {
+  anilistId: number;
+  episode: number;
+}): Promise<string | null> {
+  const q = `author:AutoLovepon anilist.co/anime/${params.anilistId}`;
+  const searchUrl =
+    "https://www.reddit.com/r/anime/search.json" +
+    `?restrict_sr=1&sort=new&limit=25&q=${encodeURIComponent(q)}`;
+
+  const response = await fetch(searchUrl, {
+    headers: {
+      "User-Agent": REDDIT_USER_AGENT,
+      Accept: "application/json",
+    },
+  });
+
+  const rawText = await response.text();
+  if (!response.ok) {
+    throw new Error(`Reddit search failed (${response.status})`);
+  }
+
+  let json: unknown;
+  try {
+    json = JSON.parse(rawText);
+  } catch {
+    throw new Error("Reddit response was not JSON");
+  }
+
+  const children = (json as RedditSearchResponse).data?.children;
+  if (!Array.isArray(children)) return null;
+
+  const candidates = children
+    .map((child) => child.data)
+    .filter((post): post is RedditSearchPost => Boolean(post))
+    .filter((post) => post.author === "AutoLovepon" && post.subreddit === "anime")
+    .filter((post) => typeof post.title === "string" && typeof post.permalink === "string")
+    .map((post) => {
+      const parsedEpisode = parseEpisodeFromDiscussionTitle(post.title!);
+      if (parsedEpisode !== params.episode) return null;
+      if (typeof post.selftext === "string") {
+        const expectedNeedle = `anilist.co/anime/${params.anilistId}`;
+        if (!post.selftext.includes(expectedNeedle)) return null;
+      }
+      return post;
+    })
+    .filter((post): post is RedditSearchPost => Boolean(post))
+    .sort((a, b) => (Number(b.created_utc) || 0) - (Number(a.created_utc) || 0));
+
+  const best = candidates[0];
+  if (!best?.permalink) return null;
+  return `https://www.reddit.com${best.permalink}`;
+}
+
 export default function ScheduleScreen() {
   const navigation = useNavigation<NavigationProp>();
   const [selectedDay, setSelectedDay] = useState(new Date().getDay());
@@ -31,6 +113,7 @@ export default function ScheduleScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [openingDiscussionForId, setOpeningDiscussionForId] = useState<number | null>(null);
 
   // Create a map of media ID to user's status for quick lookup
   const userStatusMap = useMemo(() => {
@@ -68,6 +151,33 @@ export default function ScheduleScreen() {
     loadData();
   }, [loadData]);
 
+  const openDiscussion = useCallback(async (schedule: AiringSchedule) => {
+    setOpeningDiscussionForId(schedule.id);
+    try {
+      const url = await findAutoLoveponDiscussionUrl({
+        anilistId: schedule.media.id,
+        episode: schedule.episode,
+      });
+
+      if (!url) {
+        Alert.alert(
+          "Discussion not found",
+          "Couldn't find an AutoLovepon discussion thread for this episode yet."
+        );
+        return;
+      }
+
+      await WebBrowser.openBrowserAsync(url);
+    } catch (err) {
+      Alert.alert(
+        "Failed to open discussion",
+        err instanceof Error ? err.message : "Unknown error"
+      );
+    } finally {
+      setOpeningDiscussionForId((prev) => (prev === schedule.id ? null : prev));
+    }
+  }, []);
+
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gestureState) => {
@@ -94,41 +204,64 @@ export default function ScheduleScreen() {
       const statusColor = getStatusColor(userStatus);
       const statusLabel = getStatusLabel(userStatus);
       const isHighlighted = userStatus === "CURRENT" || userStatus === "COMPLETED";
+      const isOpeningDiscussion = openingDiscussionForId === item.id;
 
       return (
-        <Pressable
-          style={[styles.scheduleItem, !isHighlighted && styles.scheduleItemDimmed]}
-          onPress={() => navigation.navigate("MediaDetail", { mediaId: item.media.id })}
-        >
-          <Image
-            source={{ uri: item.media.coverImage.medium }}
-            style={styles.coverImage}
-          />
-          <View style={styles.scheduleInfo}>
-            <Text style={styles.animeTitle} numberOfLines={2}>
-              {title}
-            </Text>
-            <View style={styles.episodeRow}>
-              <Text style={styles.episodeText}>Episode {item.episode}</Text>
-              {statusLabel && (
-                <Text style={[styles.statusBadge, { color: statusColor! }]}>
-                  {statusLabel}
-                </Text>
-              )}
+        <View style={[styles.scheduleItem, !isHighlighted && styles.scheduleItemDimmed]}>
+          <Pressable
+            style={styles.scheduleMain}
+            onPress={() => navigation.navigate("MediaDetail", { mediaId: item.media.id })}
+          >
+            <Image
+              source={{ uri: item.media.coverImage.medium }}
+              style={styles.coverImage}
+            />
+            <View style={styles.scheduleInfo}>
+              <Text style={styles.animeTitle} numberOfLines={2}>
+                {title}
+              </Text>
+              <View style={styles.episodeRow}>
+                <Text style={styles.episodeText}>Episode {item.episode}</Text>
+                {statusLabel && (
+                  <Text style={[styles.statusBadge, { color: statusColor! }]}>
+                    {statusLabel}
+                  </Text>
+                )}
+              </View>
+              <Text
+                style={[
+                  styles.airingTime,
+                  { color: hasAired ? colors.textSecondary : colors.warning },
+                ]}
+              >
+                {hasAired ? `Aired at ${airingTime}` : `Airing at ${airingTime}`}
+              </Text>
             </View>
-            <Text
+          </Pressable>
+
+          <View style={styles.discussionColumn}>
+            <TouchableOpacity
               style={[
-                styles.airingTime,
-                { color: hasAired ? colors.textSecondary : colors.warning },
+                styles.discussionButton,
+                !hasAired && styles.discussionButtonDisabled,
               ]}
+              onPress={() => openDiscussion(item)}
+              disabled={!hasAired || isOpeningDiscussion}
             >
-              {hasAired ? `Aired at ${airingTime}` : `Airing at ${airingTime}`}
-            </Text>
+              {isOpeningDiscussion ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <>
+                  <Ionicons name="logo-reddit" size={14} color={colors.textPrimary} />
+                  <Text style={styles.discussionButtonText}>Discuss</Text>
+                </>
+              )}
+            </TouchableOpacity>
           </View>
-        </Pressable>
+        </View>
       );
     },
-    [userStatusMap, navigation]
+    [userStatusMap, navigation, openDiscussion, openingDiscussionForId]
   );
 
   const renderContent = () => {
@@ -257,6 +390,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     overflow: "hidden",
   },
+  scheduleMain: {
+    flex: 1,
+    flexDirection: "row",
+  },
   scheduleItemDimmed: {
     opacity: 0.5,
   },
@@ -288,6 +425,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     marginLeft: 8,
+  },
+  discussionColumn: {
+    justifyContent: "center",
+    paddingRight: 12,
+    paddingLeft: 8,
+  },
+  discussionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.surfaceLight,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  discussionButtonDisabled: {
+    opacity: 0.4,
+  },
+  discussionButtonText: {
+    marginLeft: 6,
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.textPrimary,
   },
   airingTime: {
     fontSize: 14,
