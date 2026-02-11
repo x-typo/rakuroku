@@ -55,6 +55,7 @@ function parseEpisodeFromDiscussionTitle(title: string): number | null {
 async function findAutoLoveponDiscussionUrl(params: {
   anilistId: number;
   episode: number;
+  airingAt?: number;
 }): Promise<string | null> {
   const q = `author:AutoLovepon anilist.co/anime/${params.anilistId}`;
   const searchUrl =
@@ -83,26 +84,59 @@ async function findAutoLoveponDiscussionUrl(params: {
   const children = (json as RedditSearchResponse).data?.children;
   if (!Array.isArray(children)) return null;
 
+  const expectedNeedle = `anilist.co/anime/${params.anilistId}`;
+
   const candidates = children
     .map((child) => child.data)
     .filter((post): post is RedditSearchPost => Boolean(post))
     .filter((post) => post.author === "AutoLovepon" && post.subreddit === "anime")
     .filter((post) => typeof post.title === "string" && typeof post.permalink === "string")
-    .map((post) => {
-      const parsedEpisode = parseEpisodeFromDiscussionTitle(post.title!);
-      if (parsedEpisode !== params.episode) return null;
+    .filter((post) => {
       if (typeof post.selftext === "string") {
-        const expectedNeedle = `anilist.co/anime/${params.anilistId}`;
-        if (!post.selftext.includes(expectedNeedle)) return null;
+        return post.selftext.includes(expectedNeedle);
       }
-      return post;
+      return true;
     })
-    .filter((post): post is RedditSearchPost => Boolean(post))
-    .sort((a, b) => (Number(b.created_utc) || 0) - (Number(a.created_utc) || 0));
+    .map((post) => ({
+      post,
+      parsedEpisode: post.title ? parseEpisodeFromDiscussionTitle(post.title) : null,
+      createdUtc: Number(post.created_utc) || 0,
+    }))
+    .sort((a, b) => b.createdUtc - a.createdUtc);
 
-  const best = candidates[0];
-  if (!best?.permalink) return null;
-  return `https://www.reddit.com${best.permalink}`;
+  const exactEpisodeMatches = candidates.filter((candidate) => {
+    return candidate.parsedEpisode === params.episode;
+  });
+
+  if (exactEpisodeMatches[0]?.post?.permalink) {
+    return `https://www.reddit.com${exactEpisodeMatches[0].post.permalink}`;
+  }
+
+  const airingAt = params.airingAt;
+  if (typeof airingAt === "number" && Number.isFinite(airingAt)) {
+    const earlyThreadWindowSeconds = 12 * 60 * 60;
+    const lateThreadWindowSeconds = 3 * 24 * 60 * 60;
+    const timed = candidates
+      .filter((candidate) => {
+        if (candidate.createdUtc <= 0) return false;
+        return (
+          candidate.createdUtc >= airingAt - earlyThreadWindowSeconds &&
+          candidate.createdUtc <= airingAt + lateThreadWindowSeconds
+        );
+      })
+      .map((candidate) => ({
+        ...candidate,
+        deltaSeconds: Math.abs(candidate.createdUtc - airingAt),
+      }))
+      .sort((a, b) => a.deltaSeconds - b.deltaSeconds);
+
+    const bestTimed = timed[0];
+    if (bestTimed?.post?.permalink) {
+      return `https://www.reddit.com${bestTimed.post.permalink}`;
+    }
+  }
+
+  return null;
 }
 
 export default function ScheduleScreen() {
@@ -157,6 +191,7 @@ export default function ScheduleScreen() {
       const url = await findAutoLoveponDiscussionUrl({
         anilistId: schedule.media.id,
         episode: schedule.episode,
+        airingAt: schedule.airingAt,
       });
 
       if (!url) {
