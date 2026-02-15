@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import * as SecureStore from "expo-secure-store";
 import * as WebBrowser from "expo-web-browser";
+import { makeRedirectUri } from "expo-auth-session";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -12,8 +13,11 @@ interface AuthContextType {
   accessToken: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  authError: string | null;
   login: () => Promise<void>;
   logout: () => Promise<void>;
+  setManualToken: (token: string) => Promise<void>;
+  clearAuthError: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -21,8 +25,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-
-  const redirectUri = "rakuroku://";
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
     loadToken();
@@ -41,13 +44,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async () => {
     if (!CLIENT_ID) {
+      setAuthError("Missing AniList client id (EXPO_PUBLIC_ANILIST_CLIENT_ID).");
       return;
     }
 
     try {
-      // AniList implicit flow doesn't use redirect_uri in the auth URL
-      // The redirect is configured in the AniList app settings
-      const authUrl = `${ANILIST_AUTH_URL}?client_id=${CLIENT_ID}&response_type=token`;
+      setAuthError(null);
+
+      const redirectUri = makeRedirectUri({
+        scheme: "rakuroku",
+        path: "auth",
+        native: "rakuroku://auth",
+      });
+      const isDev = Boolean((globalThis as any).__DEV__);
+      if (isDev) {
+        console.log(`[Auth] redirectUri=${redirectUri}`);
+      }
+
+      const authUrl =
+        `${ANILIST_AUTH_URL}?client_id=${encodeURIComponent(CLIENT_ID)}` +
+        `&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}`;
 
       const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
 
@@ -63,13 +79,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (token) {
             await SecureStore.setItemAsync(TOKEN_KEY, token);
             setAccessToken(token);
+            return;
           }
         }
+        setAuthError("AniList login succeeded but access token was missing.");
+        return;
       }
+      if (result.type === "cancel" || result.type === "dismiss") {
+        setAuthError("Login cancelled.");
+        return;
+      }
+      setAuthError(`Login failed (${result.type}).`);
     } catch {
-      // Login failed silently
+      setAuthError("Login failed. Try again or use manual token paste.");
     }
-  }, [redirectUri]);
+  }, []);
 
   const logout = useCallback(async () => {
     try {
@@ -80,14 +104,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const setManualToken = useCallback(async (token: string) => {
+    const normalized = token.trim();
+    if (!normalized) {
+      setAuthError("Token cannot be empty.");
+      return;
+    }
+    try {
+      await SecureStore.setItemAsync(TOKEN_KEY, normalized);
+      setAccessToken(normalized);
+      setAuthError(null);
+    } catch {
+      setAuthError("Failed to save token.");
+    }
+  }, []);
+
+  const clearAuthError = useCallback(() => setAuthError(null), []);
+
   return (
     <AuthContext.Provider
       value={{
         accessToken,
         isLoading,
         isAuthenticated: !!accessToken,
+        authError,
         login,
         logout,
+        setManualToken,
+        clearAuthError,
       }}
     >
       {children}

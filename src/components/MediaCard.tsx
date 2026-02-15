@@ -67,7 +67,7 @@ export function MediaCard({ entry, type, onProgressUpdate }: MediaCardProps) {
     try {
       await updateProgress(entry.media.id, newProgress, accessToken);
       onProgressUpdate?.(entry.id, newProgress);
-    } catch (error) {
+    } catch {
       // Revert on failure
       setLocalProgress(localProgress);
     } finally {

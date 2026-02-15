@@ -30,9 +30,9 @@ const REDDIT_USER_AGENT = "rakuroku/1.0 (reddit-discussion-linker)";
 
 type RedditSearchResponse = {
   data?: {
-    children?: Array<{
+    children?: {
       data?: RedditSearchPost;
-    }>;
+    }[];
   };
 };
 
@@ -149,7 +149,6 @@ export default function ScheduleScreen() {
   const [error, setError] = useState<string | null>(null);
   const [openingDiscussionForId, setOpeningDiscussionForId] = useState<number | null>(null);
 
-  // Create a map of media ID to user's status for quick lookup
   const userStatusMap = useMemo(() => {
     const map = new Map<number, MediaStatus>();
     userAnimeList.forEach((entry) => {

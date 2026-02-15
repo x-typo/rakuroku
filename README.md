@@ -14,6 +14,7 @@ Rakuroku was developed as both a personal utility for tracking anime/manga consu
 - **Search** - Search the entire AniList database
 - **Media Details** - View comprehensive information including synopsis, relations, rankings, and studio details
 - **Progress Tracking** - Increment episode/chapter progress directly from the app
+- **Watch Next Episode (External)** - Open the next episode in your browser based on your AniList progress (AnimeKai provider with manual override + fallbacks)
 - **Score & Status Management** - Update ratings and watch status via intuitive modals
 - **OAuth Authentication** - Secure sign-in with AniList to sync changes to your account
 - **Pull-to-Refresh** - Refresh data across all screens
@@ -29,6 +30,8 @@ Rakuroku was developed as both a personal utility for tracking anime/manga consu
 | **expo-auth-session**   | OAuth 2.0 implicit flow authentication  |
 | **expo-secure-store**   | Secure token storage                    |
 | **React Navigation**    | Tab and stack navigation                |
+| **Jest (jest-expo)**    | Unit tests                              |
+| **ESLint**              | Linting                                 |
 
 ## Learning Outcomes
 
@@ -49,6 +52,7 @@ src/
   components/    # Reusable UI components
   constants/     # Colors, filter options
   context/       # Authentication context provider
+  providers/     # External watch providers (AnimeKai)
   hooks/         # Custom hooks (useMediaList)
   screens/       # Screen components
   types/         # TypeScript type definitions
@@ -77,16 +81,44 @@ To enable authenticated features (progress updates, score/status changes):
 
 1. Create an API client at [AniList Developer Settings](https://anilist.co/settings/developer)
 2. Set the redirect URL based on your environment:
-   - **Expo Go (development)**: `exp://[your-ip]:8081`
-   - **Standalone build**: `rakuroku://`
+   - **Standalone / dev build**: `rakuroku://auth`
+   - **Expo Go**: use the value logged by the app (look for `[Auth] redirectUri=...` in Metro logs)
 3. Add the Client ID to your `.env` file
+4. If OAuth is blocked (or redirect URLs are hard to line up), use **Profile → Paste Access Token**
+
+### External Watch Provider (AnimeKai)
+
+- The app calculates the next episode to watch from your AniList progress and opens it in your system browser.
+- If the show can’t be resolved automatically, you can pick from candidates, paste an override link, or open AnimeKai home.
+- The app does not auto-update AniList progress after playback.
 
 ## Scripts
 
 ```bash
 npm start        # Start Expo dev server
-npm run ios      # Run on iOS simulator
-npm run android  # Run on Android emulator
+npm run web      # Run in a web browser
+npm run ios      # Run on iOS simulator/device
+npm run android  # Run on Android emulator/device
+
+npm run lint      # ESLint
+npm run typecheck # TypeScript (no emit)
+npm test          # Jest
+npm run test:watch # Jest watch mode
+```
+
+## Release Mode (Physical Device)
+
+Build a standalone app that works without Metro at runtime:
+
+```bash
+npx expo run:ios --device "<DEVICE_UDID>" --configuration Release
+```
+
+If `expo run:ios` hangs while installing to a physical device, you can install/launch with Apple tooling:
+
+```bash
+xcrun devicectl device install app --device <DEVICE_UDID> ~/Library/Developer/Xcode/DerivedData/Rakuroku-*/Build/Products/Release-iphoneos/Rakuroku.app
+xcrun devicectl device process launch --device <DEVICE_UDID> com.rakuroku.app
 ```
 
 ## Acknowledgments

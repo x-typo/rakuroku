@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import {
   StyleSheet,
   Text,
@@ -11,9 +11,13 @@ import {
   Pressable,
   Share,
   Modal,
+  TextInput,
+  Platform,
+  Linking,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { RouteProp, useRoute, useNavigation } from "@react-navigation/native";
+import * as WebBrowser from "expo-web-browser";
+import { RouteProp, useRoute, useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -21,7 +25,13 @@ import { colors } from "../constants";
 import { fetchMediaDetails, fetchUserMediaEntry, updateScore, updateStatus, deleteMediaListEntry, addToList, updateProgress, UserMediaEntry } from "../api";
 import { MediaDetails, MediaStatus, MediaRank, MediaRelationType } from "../types";
 import { RootStackParamList } from "../../App";
-import { useAuth } from "../context";
+import { useAnimeKai, useAuth } from "../context";
+import {
+  ANIMEKAI_HOME_URL,
+  AnimeKaiCandidate,
+  buildAnimeKaiEpisodeUrl,
+  normalizeAnimeKaiWatchPathInput,
+} from "../providers/animekai";
 import {
   formatDate,
   formatStatus,
@@ -73,6 +83,8 @@ export default function MediaDetailScreen() {
   const insets = useSafeAreaInsets();
   const { mediaId } = route.params;
   const { isAuthenticated, accessToken } = useAuth();
+  const animeKai = useAnimeKai();
+  const hasLoadedOnce = useRef(false);
 
   const [media, setMedia] = useState<MediaDetails | null>(null);
   const [userEntry, setUserEntry] = useState<UserMediaEntry | null>(null);
@@ -87,6 +99,15 @@ export default function MediaDetailScreen() {
   const [progressModalVisible, setProgressModalVisible] = useState(false);
   const [updatingProgress, setUpdatingProgress] = useState(false);
   const [showCopied, setShowCopied] = useState(false);
+  const [watchLoading, setWatchLoading] = useState(false);
+  const [watchError, setWatchError] = useState<string | null>(null);
+  const [watchDebugLog, setWatchDebugLog] = useState<string | null>(null);
+  const [watchDebugCopied, setWatchDebugCopied] = useState(false);
+  const [watchCandidates, setWatchCandidates] = useState<AnimeKaiCandidate[]>([]);
+  const [watchCandidateModalVisible, setWatchCandidateModalVisible] = useState(false);
+  const [watchLinkModalVisible, setWatchLinkModalVisible] = useState(false);
+  const [watchLinkValue, setWatchLinkValue] = useState("");
+  const [watchLinkValueError, setWatchLinkValueError] = useState<string | null>(null);
 
   const loadData = useCallback(async (showRefreshing = false) => {
     if (showRefreshing) {
@@ -111,9 +132,13 @@ export default function MediaDetailScreen() {
     }
   }, [mediaId]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useFocusEffect(
+    useCallback(() => {
+      const showRefreshing = hasLoadedOnce.current;
+      hasLoadedOnce.current = true;
+      void loadData(showRefreshing);
+    }, [loadData])
+  );
 
   const getMainStudio = (): { id: number; name: string } | null => {
     if (!media?.studios?.edges || media.studios.edges.length === 0) return null;
@@ -158,6 +183,15 @@ export default function MediaDetailScreen() {
   const userStatusColor = getStatusColor(userStatus);
   const seasonalRank = getSeasonalRank(media.rankings, media.season, media.seasonYear);
   const canEditScore = isAuthenticated && userEntry !== null;
+  const overrideWatchPath = animeKai.getOverrideWatchPath(mediaId);
+  const hasWatchOverride = Boolean(overrideWatchPath);
+  const nextEpisodeNumber = userEntry ? userEntry.progress + 1 : null;
+  const allEpisodesWatched =
+    media.type === "ANIME" && Boolean(media.episodes) && Boolean(userEntry) && (userEntry?.progress ?? 0) >= (media.episodes ?? 0);
+  const watchDisabled =
+    !userEntry ||
+    watchLoading ||
+    (media.type === "ANIME" && media.episodes && nextEpisodeNumber ? nextEpisodeNumber > media.episodes : false);
 
   const handleShare = async () => {
     try {
@@ -175,6 +209,14 @@ export default function MediaDetailScreen() {
     setTimeout(() => setShowCopied(false), 1500);
   };
 
+  const handleCopyWatchDebug = async () => {
+    if (!watchDebugLog) return;
+    await Clipboard.setStringAsync(watchDebugLog);
+    setWatchDebugCopied(true);
+    setTimeout(() => setWatchDebugCopied(false), 1500);
+  };
+
+  // AniList mutations are best-effort; keep the UI responsive if they fail.
   const handleScoreUpdate = async (newScore: number) => {
     if (!accessToken || !userEntry) return;
 
@@ -184,7 +226,6 @@ export default function MediaDetailScreen() {
       setUserEntry({ ...userEntry, score: newScore });
       setScoreModalVisible(false);
     } catch {
-      // Score update failed silently
     } finally {
       setUpdatingScore(false);
     }
@@ -207,7 +248,6 @@ export default function MediaDetailScreen() {
       setUserEntry({ ...userEntry, status: newStatus, score: newScore });
       setStatusModalVisible(false);
     } catch {
-      // Status update failed silently
     } finally {
       setUpdatingStatus(false);
     }
@@ -222,7 +262,6 @@ export default function MediaDetailScreen() {
       setUserEntry(null);
       setStatusModalVisible(false);
     } catch {
-      // Delete failed silently
     } finally {
       setUpdatingStatus(false);
     }
@@ -237,7 +276,6 @@ export default function MediaDetailScreen() {
       setUserEntry(entry);
       setStatusModalVisible(false);
     } catch {
-      // Add to list failed silently
     } finally {
       setAddingToList(false);
     }
@@ -255,10 +293,115 @@ export default function MediaDetailScreen() {
       await updateProgress(mediaId, newProgress, accessToken);
       setUserEntry({ ...userEntry, progress: newProgress });
     } catch {
-      // Progress update failed silently
     } finally {
       setUpdatingProgress(false);
     }
+  };
+
+  const openWatchLinkEditor = () => {
+    const existing = animeKai.getOverrideWatchPath(mediaId) ?? animeKai.getWatchPath(mediaId) ?? "";
+    setWatchLinkValue(existing);
+    setWatchLinkValueError(null);
+    setWatchLinkModalVisible(true);
+  };
+
+  const handleSaveWatchLink = async () => {
+    setWatchLinkValueError(null);
+    const normalized = normalizeAnimeKaiWatchPathInput(watchLinkValue);
+    if (!normalized) {
+      setWatchLinkValueError("Paste an AnimeKai watch URL, /watch path, or slug.");
+      return;
+    }
+
+    await animeKai.setOverrideWatchPath(mediaId, normalized);
+    setWatchError(null);
+    setWatchLinkModalVisible(false);
+  };
+
+  const handleClearWatchLink = async () => {
+    await animeKai.clearOverrideWatchPath(mediaId);
+    setWatchLinkValue("");
+    setWatchError(null);
+    setWatchLinkModalVisible(false);
+  };
+
+  const handleOpenAnimeKaiHome = async () => {
+    if (Platform.OS === "web") {
+      void Linking.openURL(ANIMEKAI_HOME_URL);
+      return;
+    }
+    try {
+      await WebBrowser.openBrowserAsync(ANIMEKAI_HOME_URL);
+    } catch {
+      // Ignore; launching the browser is non-fatal.
+    }
+  };
+
+  const handleWatchNextEpisode = async () => {
+    if (!accessToken || !isAuthenticated || !userEntry) return;
+    if (!media || media.type !== "ANIME") return;
+
+    const nextEp = userEntry.progress + 1;
+    if (media.episodes && nextEp > media.episodes) {
+      setWatchError("All episodes watched.");
+      return;
+    }
+
+    setWatchLoading(true);
+    setWatchError(null);
+    setWatchDebugLog(null);
+    setWatchCandidates([]);
+    setWatchCandidateModalVisible(false);
+
+    try {
+      const animeTitle = media.title.english || media.title.romaji || media.title.native || "";
+      const resolved = await animeKai.resolveWatchPathWithDebug({ mediaId, title: animeTitle });
+      const watchPath = resolved.watchPath;
+
+      const isDev = Boolean((globalThis as any).__DEV__);
+      if (isDev) {
+        console.log(resolved.debugLog);
+      }
+      if (!watchPath || isDev) {
+        setWatchDebugLog(resolved.debugLog);
+      }
+
+      if (!watchPath) {
+        setWatchError("Couldn't find this show on AnimeKai.");
+        if (resolved.candidates.length > 0) {
+          setWatchCandidates(resolved.candidates);
+          setWatchCandidateModalVisible(true);
+        }
+        return;
+      }
+
+      const url = buildAnimeKaiEpisodeUrl(watchPath, nextEp);
+      if (Platform.OS === "web") {
+        void Linking.openURL(url);
+        return;
+      }
+      await WebBrowser.openBrowserAsync(url);
+    } catch {
+      setWatchError("Failed to resolve AnimeKai link.");
+    } finally {
+      setWatchLoading(false);
+    }
+  };
+
+  const handleSelectCandidate = async (candidate: AnimeKaiCandidate) => {
+    if (!media || media.type !== "ANIME" || !userEntry) return;
+
+    const nextEp = userEntry.progress + 1;
+    await animeKai.setOverrideWatchPath(mediaId, candidate.watchPath);
+    setWatchCandidateModalVisible(false);
+    setWatchError(null);
+
+    const url = buildAnimeKaiEpisodeUrl(candidate.watchPath, nextEp);
+    if (Platform.OS === "web") {
+      void Linking.openURL(url);
+      return;
+    }
+    await WebBrowser.openBrowserAsync(url);
   };
 
   return (
@@ -367,6 +510,74 @@ export default function MediaDetailScreen() {
           </Pressable>
         </View>
 
+        {media.type === "ANIME" && (
+          <View style={styles.watchSection}>
+            <Text style={styles.sectionTitle}>Watch</Text>
+
+            {!isAuthenticated && (
+              <Text style={styles.watchHint}>Login to track progress and watch the next episode.</Text>
+            )}
+
+            {isAuthenticated && !userEntry && (
+              <>
+                <Text style={styles.watchHint}>Add this anime to your list to track episode progress.</Text>
+                <Pressable style={styles.watchSecondaryButton} onPress={() => setStatusModalVisible(true)}>
+                  <Text style={styles.watchSecondaryText}>Add to List</Text>
+                </Pressable>
+              </>
+            )}
+
+            {isAuthenticated && userEntry && (
+              <>
+                <Pressable
+                  style={[styles.watchButton, watchDisabled && styles.watchButtonDisabled]}
+                  onPress={handleWatchNextEpisode}
+                  disabled={watchDisabled}
+                >
+                  <Ionicons name="play" size={18} color={colors.textPrimary} />
+                  <Text style={styles.watchButtonText}>
+                    Watch episode {nextEpisodeNumber ?? "?"}
+                  </Text>
+                  {watchLoading && (
+                    <ActivityIndicator
+                      size="small"
+                      color={colors.textPrimary}
+                      style={styles.watchSpinner}
+                    />
+                  )}
+                </Pressable>
+
+                {allEpisodesWatched && <Text style={styles.watchHint}>All episodes watched.</Text>}
+                {watchError && <Text style={styles.watchErrorText}>{watchError}</Text>}
+                {watchError && watchDebugLog && (
+                  <Pressable style={styles.watchSecondaryButton} onPress={handleCopyWatchDebug}>
+                    <Text style={styles.watchSecondaryText}>
+                      {watchDebugCopied ? "Debug Copied" : "Copy Debug Log"}
+                    </Text>
+                  </Pressable>
+                )}
+
+                <View style={styles.watchButtonsRow}>
+                  <Pressable style={styles.watchSecondaryButton} onPress={() => void handleOpenAnimeKaiHome()}>
+                    <Text style={styles.watchSecondaryText}>AnimeKai Home</Text>
+                  </Pressable>
+                  <Pressable style={styles.watchSecondaryButton} onPress={openWatchLinkEditor}>
+                    <Text style={styles.watchSecondaryText}>
+                      {hasWatchOverride ? "Edit Override" : "Override Link"}
+                    </Text>
+                  </Pressable>
+                </View>
+
+                {hasWatchOverride && (
+                  <Pressable style={styles.watchClearButton} onPress={handleClearWatchLink}>
+                    <Text style={styles.watchClearText}>Clear Override</Text>
+                  </Pressable>
+                )}
+              </>
+            )}
+          </View>
+        )}
+
         {media.genres.length > 0 && (
           <View style={styles.genresContainer}>
             {media.genres.map((genre) => (
@@ -450,7 +661,6 @@ export default function MediaDetailScreen() {
                 </View>
               );
             }
-            // Remove border from last row
             return rows.map((row, index) =>
               index === rows.length - 1
                 ? React.cloneElement(row as React.ReactElement<{ style?: object }>, {
@@ -678,6 +888,113 @@ export default function MediaDetailScreen() {
           </View>
         </Pressable>
       </Modal>
+
+      <Modal
+        visible={watchLinkModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setWatchLinkModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setWatchLinkModalVisible(false)}
+        >
+          <Pressable style={styles.watchLinkModal} onPress={() => {}}>
+            <Text style={styles.watchLinkModalTitle}>AnimeKai Link Override</Text>
+            <Text style={styles.watchLinkModalHint}>
+              Paste an AnimeKai watch URL, /watch path, or slug.
+            </Text>
+            <TextInput
+              style={styles.watchLinkInput}
+              placeholder="https://animekai.to/watch/... or /watch/... or slug"
+              placeholderTextColor={colors.textSecondary}
+              autoCapitalize="none"
+              autoCorrect={false}
+              value={watchLinkValue}
+              onChangeText={(text) => {
+                setWatchLinkValue(text);
+                setWatchLinkValueError(null);
+              }}
+            />
+            {watchLinkValueError && (
+              <Text style={styles.watchLinkErrorText}>{watchLinkValueError}</Text>
+            )}
+
+            <View style={styles.watchLinkButtonsRow}>
+              <Pressable style={styles.watchLinkSaveButton} onPress={handleSaveWatchLink}>
+                <Text style={styles.watchLinkSaveText}>Save</Text>
+              </Pressable>
+              <Pressable
+                style={styles.watchLinkCancelButton}
+                onPress={() => setWatchLinkModalVisible(false)}
+              >
+                <Text style={styles.watchLinkCancelText}>Cancel</Text>
+              </Pressable>
+            </View>
+
+            {hasWatchOverride && (
+              <Pressable style={styles.watchLinkClearButton} onPress={handleClearWatchLink}>
+                <Text style={styles.watchLinkClearText}>Clear Override</Text>
+              </Pressable>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={watchCandidateModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setWatchCandidateModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setWatchCandidateModalVisible(false)}
+        >
+          <Pressable style={styles.watchCandidateModal} onPress={() => {}}>
+            <Text style={styles.watchLinkModalTitle}>Choose AnimeKai Link</Text>
+            <Text style={styles.watchLinkModalHint}>
+              We found multiple results. Pick the correct one once and we will remember it.
+            </Text>
+
+            <ScrollView style={styles.watchCandidateList} contentContainerStyle={styles.watchCandidateListContent}>
+              {watchCandidates.map((candidate) => (
+                <Pressable
+                  key={candidate.watchPath}
+                  style={styles.watchCandidateRow}
+                  onPress={() => void handleSelectCandidate(candidate)}
+                >
+                  <Text style={styles.watchCandidateTitle} numberOfLines={2}>
+                    {candidate.title ?? candidate.watchPath.replace(/^\/watch\//, "")}
+                  </Text>
+                  <Text style={styles.watchCandidatePath} numberOfLines={1}>
+                    {candidate.watchPath}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+
+            <View style={styles.watchLinkButtonsRow}>
+              <Pressable style={styles.watchLinkCancelButton} onPress={() => setWatchCandidateModalVisible(false)}>
+                <Text style={styles.watchLinkCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={styles.watchLinkSaveButton}
+                onPress={() => {
+                  setWatchCandidateModalVisible(false);
+                  void handleOpenAnimeKaiHome();
+                }}
+              >
+                <Text style={styles.watchLinkSaveText}>AnimeKai Home</Text>
+              </Pressable>
+            </View>
+
+            <Pressable style={styles.watchLinkClearButton} onPress={openWatchLinkEditor}>
+              <Text style={styles.watchLinkClearText}>Paste Link Instead</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -794,6 +1111,75 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
     gap: 16,
+  },
+  watchSection: {
+    marginTop: 16,
+    marginHorizontal: 16,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 16,
+  },
+  watchHint: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 8,
+  },
+  watchButton: {
+    marginTop: 12,
+    backgroundColor: colors.primary,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  watchButtonDisabled: {
+    opacity: 0.5,
+  },
+  watchButtonText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  watchSpinner: {
+    marginLeft: 8,
+  },
+  watchErrorText: {
+    marginTop: 10,
+    fontSize: 13,
+    color: colors.error,
+  },
+  watchButtonsRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 12,
+  },
+  watchSecondaryButton: {
+    flex: 1,
+    backgroundColor: colors.surfaceLight,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  watchSecondaryText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.textPrimary,
+  },
+  watchClearButton: {
+    marginTop: 12,
+    paddingVertical: 10,
+    alignItems: "center",
+    borderRadius: 10,
+    backgroundColor: "rgba(239, 68, 68, 0.15)",
+  },
+  watchClearText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.error,
   },
   actionButton: {
     flexDirection: "row",
@@ -917,6 +1303,113 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.7)",
     justifyContent: "center",
     alignItems: "center",
+  },
+  watchLinkModal: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 24,
+    width: "85%",
+    maxWidth: 360,
+  },
+  watchCandidateModal: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 24,
+    width: "90%",
+    maxWidth: 380,
+    maxHeight: "80%",
+  },
+  watchCandidateList: {
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  watchCandidateListContent: {
+    gap: 10,
+    paddingBottom: 4,
+  },
+  watchCandidateRow: {
+    backgroundColor: colors.surfaceLight,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
+  watchCandidateTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  watchCandidatePath: {
+    marginTop: 4,
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  watchLinkModalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: colors.textPrimary,
+    textAlign: "center",
+    marginBottom: 10,
+  },
+  watchLinkModalHint: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    textAlign: "center",
+    marginBottom: 14,
+  },
+  watchLinkInput: {
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    color: colors.textPrimary,
+    fontSize: 14,
+  },
+  watchLinkErrorText: {
+    marginTop: 10,
+    fontSize: 13,
+    color: colors.error,
+    textAlign: "center",
+  },
+  watchLinkButtonsRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 16,
+  },
+  watchLinkSaveButton: {
+    flex: 1,
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  watchLinkSaveText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  watchLinkCancelButton: {
+    flex: 1,
+    backgroundColor: colors.surfaceLight,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  watchLinkCancelText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  watchLinkClearButton: {
+    marginTop: 16,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderRadius: 12,
+    backgroundColor: "rgba(239, 68, 68, 0.15)",
+  },
+  watchLinkClearText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.error,
   },
   scoreModal: {
     backgroundColor: colors.surface,

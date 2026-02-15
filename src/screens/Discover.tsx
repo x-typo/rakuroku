@@ -41,6 +41,10 @@ export default function DiscoverScreen() {
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const seasonInfo = getSeasonInfo();
+  const currentSeason = seasonInfo.current.season;
+  const currentYear = seasonInfo.current.year;
+  const nextSeason = seasonInfo.next.season;
+  const nextYear = seasonInfo.next.year;
 
   const loadData = useCallback(async (showRefreshing = false) => {
     if (showRefreshing) {
@@ -52,8 +56,8 @@ export default function DiscoverScreen() {
 
     try {
       const [currentPage, nextPage] = await Promise.all([
-        fetchSeasonalAnime(seasonInfo.current.season, seasonInfo.current.year, 1, 20, "POPULARITY_DESC"),
-        fetchSeasonalAnime(seasonInfo.next.season, seasonInfo.next.year, 1, 20, "POPULARITY_DESC"),
+        fetchSeasonalAnime(currentSeason, currentYear, 1, 20, "POPULARITY_DESC"),
+        fetchSeasonalAnime(nextSeason, nextYear, 1, 20, "POPULARITY_DESC"),
       ]);
       setCurrentSeasonAnime(currentPage.media);
       setNextSeasonAnime(nextPage.media);
@@ -63,7 +67,7 @@ export default function DiscoverScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [seasonInfo.current.season, seasonInfo.current.year, seasonInfo.next.season, seasonInfo.next.year]);
+  }, [currentSeason, currentYear, nextSeason, nextYear]);
 
   const performSearch = useCallback(async (query: string) => {
     if (!query.trim()) {
@@ -79,7 +83,7 @@ export default function DiscoverScreen() {
       const result = await searchMedia(query, 1, 25);
       setSearchResults(result.media);
       setHasNextPage(result.hasNextPage);
-    } catch (err) {
+    } catch {
       // Silently fail on search - user can try again
     } finally {
       setSearching(false);
@@ -97,7 +101,7 @@ export default function DiscoverScreen() {
       setSearchResults((prev) => [...prev, ...result.media]);
       setHasNextPage(result.hasNextPage);
       currentPage.current = nextPage;
-    } catch (err) {
+    } catch {
       // Silently fail on load more
     } finally {
       setLoadingMore(false);

@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Pressable,
+  Modal,
+  TextInput,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -58,12 +60,14 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function ProfileScreen() {
   const navigation = useNavigation<NavigationProp>();
-  const { isAuthenticated, isLoading: authLoading, login, logout } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, authError, login, logout, setManualToken, clearAuthError } = useAuth();
   const [user, setUser] = useState<User | null>(null);
   const [activities, setActivities] = useState<ListActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [manualTokenModalVisible, setManualTokenModalVisible] = useState(false);
+  const [manualTokenValue, setManualTokenValue] = useState("");
 
   const loadData = useCallback(async (showRefreshing = false) => {
     if (showRefreshing) {
@@ -173,10 +177,25 @@ export default function ProfileScreen() {
               <Text style={styles.authButtonText}>Sign Out</Text>
             </Pressable>
           ) : (
-            <Pressable style={[styles.authButton, styles.authButtonPrimary]} onPress={login}>
-              <Ionicons name="log-in-outline" size={20} color={colors.textPrimary} />
-              <Text style={styles.authButtonText}>Sign in with AniList</Text>
-            </Pressable>
+            <>
+              <Pressable style={[styles.authButton, styles.authButtonPrimary]} onPress={login}>
+                <Ionicons name="log-in-outline" size={20} color={colors.textPrimary} />
+                <Text style={styles.authButtonText}>Sign in with AniList</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.authButton, styles.authButtonSecondary]}
+                onPress={() => setManualTokenModalVisible(true)}
+              >
+                <Ionicons name="key-outline" size={20} color={colors.textPrimary} />
+                <Text style={styles.authButtonText}>Paste Access Token</Text>
+              </Pressable>
+              {authError && (
+                <Pressable style={styles.authErrorBanner} onPress={clearAuthError}>
+                  <Text style={styles.authErrorText}>{authError}</Text>
+                  <Text style={styles.authErrorDismiss}>Tap to dismiss</Text>
+                </Pressable>
+              )}
+            </>
           )}
         </View>
 
@@ -214,6 +233,51 @@ export default function ProfileScreen() {
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
       )}
+
+      <Modal
+        visible={manualTokenModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setManualTokenModalVisible(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setManualTokenModalVisible(false)}>
+          <Pressable style={styles.manualTokenModal} onPress={() => {}}>
+            <Text style={styles.manualTokenTitle}>Paste AniList Token</Text>
+            <Text style={styles.manualTokenHint}>
+              If browser login is blocked, you can paste an existing AniList OAuth access token here.
+            </Text>
+
+            <TextInput
+              style={styles.manualTokenInput}
+              placeholder="access_token…"
+              placeholderTextColor={colors.textSecondary}
+              autoCapitalize="none"
+              autoCorrect={false}
+              value={manualTokenValue}
+              onChangeText={setManualTokenValue}
+            />
+
+            <View style={styles.manualTokenButtonsRow}>
+              <Pressable
+                style={styles.manualTokenSaveButton}
+                onPress={async () => {
+                  await setManualToken(manualTokenValue);
+                  setManualTokenModalVisible(false);
+                  setManualTokenValue("");
+                }}
+              >
+                <Text style={styles.manualTokenSaveText}>Save</Text>
+              </Pressable>
+              <Pressable
+                style={styles.manualTokenCancelButton}
+                onPress={() => setManualTokenModalVisible(false)}
+              >
+                <Text style={styles.manualTokenCancelText}>Cancel</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -356,9 +420,97 @@ const styles = StyleSheet.create({
   authButtonPrimary: {
     backgroundColor: colors.primary,
   },
+  authButtonSecondary: {
+    marginTop: 10,
+    backgroundColor: colors.surfaceLight,
+  },
   authButtonText: {
     color: colors.textPrimary,
     fontSize: 16,
     fontWeight: "600",
+  },
+  authErrorBanner: {
+    marginTop: 12,
+    width: "100%",
+    backgroundColor: "rgba(239, 68, 68, 0.15)",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: "center",
+  },
+  authErrorText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.error,
+    textAlign: "center",
+  },
+  authErrorDismiss: {
+    marginTop: 4,
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: "center",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  manualTokenModal: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 24,
+    width: "85%",
+    maxWidth: 360,
+  },
+  manualTokenTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: colors.textPrimary,
+    textAlign: "center",
+    marginBottom: 10,
+  },
+  manualTokenHint: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    textAlign: "center",
+    marginBottom: 14,
+  },
+  manualTokenInput: {
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    color: colors.textPrimary,
+    fontSize: 14,
+  },
+  manualTokenButtonsRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 16,
+  },
+  manualTokenSaveButton: {
+    flex: 1,
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  manualTokenSaveText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  manualTokenCancelButton: {
+    flex: 1,
+    backgroundColor: colors.surfaceLight,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  manualTokenCancelText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.textPrimary,
   },
 });

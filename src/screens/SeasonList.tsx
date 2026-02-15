@@ -81,7 +81,7 @@ export default function SeasonListScreen() {
       setMedia((prev) => [...prev, ...seasonData.media]);
       setHasNextPage(seasonData.hasNextPage);
       currentPage.current = nextPage;
-    } catch (err) {
+    } catch {
       // Silently fail on load more - user can scroll up and try again
     } finally {
       setLoadingMore(false);

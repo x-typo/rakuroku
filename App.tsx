@@ -16,7 +16,7 @@ import {
   SeasonListScreen,
 } from "./src/screens";
 import { colors } from "./src/constants";
-import { AuthProvider } from "./src/context";
+import { AuthProvider, AnimeKaiProvider } from "./src/context";
 
 import { Season } from "./src/types";
 
@@ -140,21 +140,23 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AuthProvider>
-        <NavigationContainer theme={DarkTheme}>
-          <StatusBar style="light" />
-          <Stack.Navigator
-            screenOptions={{
-              headerShown: false,
-              gestureEnabled: true,
-              animation: "slide_from_right",
-            }}
-          >
-            <Stack.Screen name="MainTabs" component={MainTabs} />
-            <Stack.Screen name="MediaDetail" component={MediaDetailScreen} />
-            <Stack.Screen name="Studio" component={StudioScreen} />
-            <Stack.Screen name="SeasonList" component={SeasonListScreen} />
-          </Stack.Navigator>
-        </NavigationContainer>
+        <AnimeKaiProvider>
+          <NavigationContainer theme={DarkTheme}>
+            <StatusBar style="light" />
+            <Stack.Navigator
+              screenOptions={{
+                headerShown: false,
+                gestureEnabled: true,
+                animation: "slide_from_right",
+              }}
+            >
+              <Stack.Screen name="MainTabs" component={MainTabs} />
+              <Stack.Screen name="MediaDetail" component={MediaDetailScreen} />
+              <Stack.Screen name="Studio" component={StudioScreen} />
+              <Stack.Screen name="SeasonList" component={SeasonListScreen} />
+            </Stack.Navigator>
+          </NavigationContainer>
+        </AnimeKaiProvider>
       </AuthProvider>
     </GestureHandlerRootView>
   );
