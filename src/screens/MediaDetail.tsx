@@ -85,6 +85,7 @@ export default function MediaDetailScreen() {
   const { isAuthenticated, accessToken } = useAuth();
   const animeKai = useAnimeKai();
   const hasLoadedOnce = useRef(false);
+  const pendingCandidateModalOpenUrlRef = useRef<string | null>(null);
 
   const [media, setMedia] = useState<MediaDetails | null>(null);
   const [userEntry, setUserEntry] = useState<UserMediaEntry | null>(null);
@@ -108,6 +109,28 @@ export default function MediaDetailScreen() {
   const [watchLinkModalVisible, setWatchLinkModalVisible] = useState(false);
   const [watchLinkValue, setWatchLinkValue] = useState("");
   const [watchLinkValueError, setWatchLinkValueError] = useState<string | null>(null);
+
+  const openExternalUrl = useCallback(
+    async (url: string) => {
+      if (Platform.OS === "web") {
+        void Linking.openURL(url);
+        return;
+      }
+
+      try {
+        await WebBrowser.openBrowserAsync(url);
+        return;
+      } catch {
+      }
+
+      try {
+        await Linking.openURL(url);
+      } catch {
+        setWatchError("Failed to open episode link.");
+      }
+    },
+    []
+  );
 
   const loadData = useCallback(async (showRefreshing = false) => {
     if (showRefreshing) {
@@ -199,7 +222,6 @@ export default function MediaDetailScreen() {
         message: `https://anilist.co/${media.type.toLowerCase()}/${media.id}`,
       });
     } catch {
-      // Intentional no-op - share cancelled by user
     }
   };
 
@@ -216,7 +238,6 @@ export default function MediaDetailScreen() {
     setTimeout(() => setWatchDebugCopied(false), 1500);
   };
 
-  // AniList mutations are best-effort; keep the UI responsive if they fail.
   const handleScoreUpdate = async (newScore: number) => {
     if (!accessToken || !userEntry) return;
 
@@ -325,16 +346,8 @@ export default function MediaDetailScreen() {
     setWatchLinkModalVisible(false);
   };
 
-  const handleOpenAnimeKaiHome = async () => {
-    if (Platform.OS === "web") {
-      void Linking.openURL(ANIMEKAI_HOME_URL);
-      return;
-    }
-    try {
-      await WebBrowser.openBrowserAsync(ANIMEKAI_HOME_URL);
-    } catch {
-      // Ignore; launching the browser is non-fatal.
-    }
+  const handleOpenAnimeKaiHome = () => {
+    void openExternalUrl(ANIMEKAI_HOME_URL);
   };
 
   const handleWatchNextEpisode = async () => {
@@ -372,18 +385,21 @@ export default function MediaDetailScreen() {
           setWatchCandidates(resolved.candidates);
           setWatchCandidateModalVisible(true);
         }
+        setWatchLoading(false);
         return;
       }
 
       const url = buildAnimeKaiEpisodeUrl(watchPath, nextEp);
       if (Platform.OS === "web") {
         void Linking.openURL(url);
+        setWatchLoading(false);
         return;
       }
-      await WebBrowser.openBrowserAsync(url);
+
+      setWatchLoading(false);
+      void openExternalUrl(url);
     } catch {
       setWatchError("Failed to resolve AnimeKai link.");
-    } finally {
       setWatchLoading(false);
     }
   };
@@ -395,13 +411,23 @@ export default function MediaDetailScreen() {
     await animeKai.setOverrideWatchPath(mediaId, candidate.watchPath);
     setWatchCandidateModalVisible(false);
     setWatchError(null);
+    setWatchDebugLog(null);
 
     const url = buildAnimeKaiEpisodeUrl(candidate.watchPath, nextEp);
     if (Platform.OS === "web") {
       void Linking.openURL(url);
       return;
     }
-    await WebBrowser.openBrowserAsync(url);
+
+    if (Platform.OS === "ios") {
+      pendingCandidateModalOpenUrlRef.current = url;
+      setWatchLoading(true);
+      setWatchCandidateModalVisible(false);
+      return;
+    }
+    setWatchCandidateModalVisible(false);
+    setWatchLoading(false);
+    void openExternalUrl(url);
   };
 
   return (
@@ -945,11 +971,22 @@ export default function MediaDetailScreen() {
         visible={watchCandidateModalVisible}
         transparent
         animationType="fade"
+        onDismiss={() => {
+          const url = pendingCandidateModalOpenUrlRef.current;
+          pendingCandidateModalOpenUrlRef.current = null;
+          if (!url) return;
+          setWatchLoading(false);
+          void openExternalUrl(url);
+        }}
         onRequestClose={() => setWatchCandidateModalVisible(false)}
       >
         <Pressable
           style={styles.modalOverlay}
-          onPress={() => setWatchCandidateModalVisible(false)}
+          onPress={() => {
+            pendingCandidateModalOpenUrlRef.current = null;
+            setWatchCandidateModalVisible(false);
+            setWatchLoading(false);
+          }}
         >
           <Pressable style={styles.watchCandidateModal} onPress={() => {}}>
             <Text style={styles.watchLinkModalTitle}>Choose AnimeKai Link</Text>
@@ -975,14 +1012,34 @@ export default function MediaDetailScreen() {
             </ScrollView>
 
             <View style={styles.watchLinkButtonsRow}>
-              <Pressable style={styles.watchLinkCancelButton} onPress={() => setWatchCandidateModalVisible(false)}>
+              <Pressable
+                style={styles.watchLinkCancelButton}
+                onPress={() => {
+                  pendingCandidateModalOpenUrlRef.current = null;
+                  setWatchCandidateModalVisible(false);
+                  setWatchLoading(false);
+                }}
+              >
                 <Text style={styles.watchLinkCancelText}>Cancel</Text>
               </Pressable>
               <Pressable
                 style={styles.watchLinkSaveButton}
                 onPress={() => {
+                  if (Platform.OS === "web") {
+                    void Linking.openURL(ANIMEKAI_HOME_URL);
+                    return;
+                  }
+
+                  if (Platform.OS === "ios") {
+                    pendingCandidateModalOpenUrlRef.current = ANIMEKAI_HOME_URL;
+                    setWatchLoading(true);
+                    setWatchCandidateModalVisible(false);
+                    return;
+                  }
+
                   setWatchCandidateModalVisible(false);
-                  void handleOpenAnimeKaiHome();
+                  setWatchLoading(false);
+                  void openExternalUrl(ANIMEKAI_HOME_URL);
                 }}
               >
                 <Text style={styles.watchLinkSaveText}>AnimeKai Home</Text>
