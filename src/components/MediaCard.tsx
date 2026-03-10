@@ -120,6 +120,7 @@ export function MediaCard({ entry, type, onProgressUpdate }: MediaCardProps) {
   };
 
   const handleSwipeEnd = () => {
+    if (swipeTimerRef.current) clearTimeout(swipeTimerRef.current);
     swipeTimerRef.current = setTimeout(() => {
       isSwiping.current = false;
     }, 300);
@@ -132,7 +133,6 @@ export function MediaCard({ entry, type, onProgressUpdate }: MediaCardProps) {
       renderRightActions={renderRightActions}
       onSwipeableWillOpen={handleSwipeStart}
       onSwipeableOpen={handleSwipeOpen}
-      onSwipeableWillClose={handleSwipeEnd}
       onSwipeableClose={handleSwipeEnd}
       overshootLeft={false}
       overshootRight={false}
