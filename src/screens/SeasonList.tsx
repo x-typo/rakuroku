@@ -82,7 +82,6 @@ export default function SeasonListScreen() {
       setHasNextPage(seasonData.hasNextPage);
       currentPage.current = nextPage;
     } catch {
-      // Silently fail on load more - user can scroll up and try again
     } finally {
       setLoadingMore(false);
     }

@@ -36,7 +36,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const token = await SecureStore.getItemAsync(TOKEN_KEY);
       setAccessToken(token);
     } catch {
-      // Token load failed, user will need to login
     } finally {
       setIsLoading(false);
     }
@@ -100,7 +99,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await SecureStore.deleteItemAsync(TOKEN_KEY);
       setAccessToken(null);
     } catch {
-      // Logout failed silently
     }
   }, []);
 

@@ -302,10 +302,8 @@ export function normalizeAnimeKaiWatchPathInput(input: string): string | null {
       return url.pathname;
     }
   } catch {
-    // Not a URL; try parsing as a path/slug.
   }
 
-  // Path: /watch/<slug>
   if (trimmed.startsWith("/watch/")) {
     const cut = trimmed.split(/[?#]/, 1)[0];
     return cut || null;

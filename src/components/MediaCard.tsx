@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { StyleSheet, Text, View, Image, Pressable, Keyboard, ActivityIndicator } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -25,6 +25,14 @@ export function MediaCard({ entry, type, onProgressUpdate }: MediaCardProps) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [localProgress, setLocalProgress] = useState(entry.progress);
   const swipeableRef = useRef<Swipeable>(null);
+  const isSwiping = useRef(false);
+  const swipeTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  useEffect(() => {
+    return () => {
+      if (swipeTimerRef.current) clearTimeout(swipeTimerRef.current);
+    };
+  }, []);
 
   const total = type === "ANIME" ? entry.media.episodes : entry.media.chapters;
   const progressPercent = total ? (localProgress / total) * 100 : 0;
@@ -98,13 +106,23 @@ export function MediaCard({ entry, type, onProgressUpdate }: MediaCardProps) {
   const handleSwipeOpen = (direction: "left" | "right") => {
     if (isUpdating) return;
     if (direction === "left") {
-      // Opened left side (swiped right) = increment
       handleProgressChange(1);
     } else {
-      // Opened right side (swiped left) = decrement
       handleProgressChange(-1);
     }
     swipeableRef.current?.close();
+  };
+
+  const scoreText = getScoreText();
+
+  const handleSwipeStart = () => {
+    isSwiping.current = true;
+  };
+
+  const handleSwipeEnd = () => {
+    swipeTimerRef.current = setTimeout(() => {
+      isSwiping.current = false;
+    }, 300);
   };
 
   return (
@@ -112,7 +130,10 @@ export function MediaCard({ entry, type, onProgressUpdate }: MediaCardProps) {
       ref={swipeableRef}
       renderLeftActions={renderLeftActions}
       renderRightActions={renderRightActions}
+      onSwipeableWillOpen={handleSwipeStart}
       onSwipeableOpen={handleSwipeOpen}
+      onSwipeableWillClose={handleSwipeEnd}
+      onSwipeableClose={handleSwipeEnd}
       overshootLeft={false}
       overshootRight={false}
       containerStyle={styles.swipeableContainer}
@@ -120,6 +141,7 @@ export function MediaCard({ entry, type, onProgressUpdate }: MediaCardProps) {
       <Pressable
         style={styles.container}
         onPress={() => {
+          if (isSwiping.current) return;
           Keyboard.dismiss();
           navigation.navigate("MediaDetail", { mediaId: entry.media.id });
         }}
@@ -149,8 +171,8 @@ export function MediaCard({ entry, type, onProgressUpdate }: MediaCardProps) {
                 Episode {nextAiring.episode} airing in {formatNextAiring(nextAiring.airingAt)}
               </Text>
             )}
-            {getScoreText() && (
-              <Text style={[styles.score, { color: getScoreColor() }]}>{getScoreText()}</Text>
+            {scoreText && (
+              <Text style={[styles.score, { color: getScoreColor() }]}>{scoreText}</Text>
             )}
           </View>
         </View>
