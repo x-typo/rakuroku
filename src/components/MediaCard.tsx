@@ -116,6 +116,7 @@ export function MediaCard({ entry, type, onProgressUpdate }: MediaCardProps) {
   const scoreText = getScoreText();
 
   const handleSwipeStart = () => {
+    if (swipeTimerRef.current) clearTimeout(swipeTimerRef.current);
     isSwiping.current = true;
   };
 
