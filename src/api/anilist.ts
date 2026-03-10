@@ -453,18 +453,14 @@ export async function fetchAiringSchedule(
   const now = new Date();
   const targetDate = new Date(now);
 
-  // Calculate the target day
   const currentDay = now.getDay();
   let daysToAdd = dayIndex - currentDay;
 
   // If the target day is in the past this week, it still shows (could be earlier today or past days)
   targetDate.setDate(now.getDate() + daysToAdd);
 
-  // Set to start of day (00:00:00) in local timezone
   targetDate.setHours(0, 0, 0, 0);
   const startOfDay = Math.floor(targetDate.getTime() / 1000);
-
-  // Set to end of day (23:59:59)
   const endOfDay = startOfDay + 86400 - 1;
 
   const allSchedules: AiringSchedule[] = [];
@@ -498,7 +494,6 @@ export async function fetchAiringSchedule(
     }
 
     const pageData: AiringSchedulePage = json.data.Page;
-    // Filter out adult content
     const filteredSchedules = pageData.airingSchedules.filter(
       (schedule) => !schedule.media.isAdult
     );
@@ -762,7 +757,6 @@ export async function fetchSeasonalAnime(
     throw new Error(json.errors[0]?.message || "AniList API error");
   }
 
-  // Filter out adult content
   const filteredMedia = json.data.Page.media.filter(
     (media: SeasonalMedia) => !media.isAdult
   );

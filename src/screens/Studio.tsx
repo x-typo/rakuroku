@@ -34,7 +34,6 @@ export default function StudioScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Create a map of media ID to user's status for quick lookup
   const userStatusMap = useMemo(() => {
     const map = new Map<number, MediaStatus>();
     userAnimeList.forEach((entry) => {

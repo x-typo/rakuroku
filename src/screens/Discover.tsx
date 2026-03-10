@@ -84,7 +84,6 @@ export default function DiscoverScreen() {
       setSearchResults(result.media);
       setHasNextPage(result.hasNextPage);
     } catch {
-      // Silently fail on search - user can try again
     } finally {
       setSearching(false);
     }
@@ -102,7 +101,6 @@ export default function DiscoverScreen() {
       setHasNextPage(result.hasNextPage);
       currentPage.current = nextPage;
     } catch {
-      // Silently fail on load more
     } finally {
       setLoadingMore(false);
     }
