@@ -3,6 +3,7 @@ import { StyleSheet, Text, View, FlatList, RefreshControl, ActivityIndicator } f
 import { colors, ANIME_FILTERS, DEFAULT_ANIME_FILTER } from "../constants";
 import { MediaListEntry } from "../types";
 import { useMediaList } from "../hooks";
+import { useAuth } from "../context";
 import {
   MediaCard,
   SearchBar,
@@ -21,6 +22,7 @@ export default function AnimeScreen({
   showFilterModal = false,
   onCloseFilterModal,
 }: AnimeScreenProps) {
+  const { accessToken } = useAuth();
   const {
     filteredEntries,
     loading,
@@ -35,6 +37,7 @@ export default function AnimeScreen({
   } = useMediaList({
     type: "ANIME",
     defaultFilter: DEFAULT_ANIME_FILTER,
+    accessToken,
   });
 
   const renderItem = useCallback(

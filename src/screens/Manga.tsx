@@ -3,6 +3,7 @@ import { StyleSheet, Text, View, FlatList, RefreshControl, ActivityIndicator } f
 import { colors, MANGA_FILTERS, DEFAULT_MANGA_FILTER } from "../constants";
 import { MediaListEntry } from "../types";
 import { useMediaList } from "../hooks";
+import { useAuth } from "../context";
 import {
   MediaCard,
   SearchBar,
@@ -21,6 +22,7 @@ export default function MangaScreen({
   showFilterModal = false,
   onCloseFilterModal,
 }: MangaScreenProps) {
+  const { accessToken } = useAuth();
   const {
     filteredEntries,
     loading,
@@ -35,6 +37,7 @@ export default function MangaScreen({
   } = useMediaList({
     type: "MANGA",
     defaultFilter: DEFAULT_MANGA_FILTER,
+    accessToken,
   });
 
   const renderItem = useCallback(
