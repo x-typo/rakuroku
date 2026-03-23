@@ -414,12 +414,17 @@ export async function fetchUser(): Promise<User> {
   return json.data.User;
 }
 
-export async function fetchMediaList(type: MediaType): Promise<MediaListEntry[]> {
+export async function fetchMediaList(type: MediaType, accessToken?: string | null): Promise<MediaListEntry[]> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
+
   const response = await fetch(ANILIST_API, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers,
     body: JSON.stringify({
       query: MEDIA_LIST_QUERY,
       variables: {

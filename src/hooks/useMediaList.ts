@@ -6,6 +6,7 @@ import { MediaType, MediaListEntry } from "../types";
 interface UseMediaListOptions {
   type: MediaType;
   defaultFilter: string;
+  accessToken?: string | null;
 }
 
 interface UseMediaListReturn {
@@ -29,6 +30,7 @@ interface UseMediaListReturn {
 export function useMediaList({
   type,
   defaultFilter,
+  accessToken,
 }: UseMediaListOptions): UseMediaListReturn {
   const [entries, setEntries] = useState<MediaListEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,7 +44,7 @@ export function useMediaList({
   const loadData = useCallback(async () => {
     try {
       setError(null);
-      const data = await fetchMediaList(type);
+      const data = await fetchMediaList(type, accessToken);
       setEntries(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
@@ -50,7 +52,7 @@ export function useMediaList({
       setLoading(false);
       setRefreshing(false);
     }
-  }, [type]);
+  }, [type, accessToken]);
 
   useFocusEffect(
     useCallback(() => {
