@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { useIsFocused } from "@react-navigation/native";
+import { useState, useCallback, useMemo, useRef } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import { fetchMediaList, filterByStatus, searchEntries } from "../api";
 import { MediaType, MediaListEntry } from "../types";
 
@@ -37,7 +37,7 @@ export function useMediaList({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFilter, setSelectedFilter] = useState(defaultFilter);
   const [showSearch, setShowSearch] = useState(false);
-  const isFocused = useIsFocused();
+  const hasLoadedOnce = useRef(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -52,17 +52,21 @@ export function useMediaList({
     }
   }, [type]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useFocusEffect(
+    useCallback(() => {
+      if (hasLoadedOnce.current) {
+        setRefreshing(true);
+      }
+      hasLoadedOnce.current = true;
+      void loadData();
 
-  useEffect(() => {
-    if (!isFocused) {
-      setShowSearch(false);
-      setSearchQuery("");
-      setSelectedFilter(defaultFilter);
-    }
-  }, [isFocused, defaultFilter]);
+      return () => {
+        setShowSearch(false);
+        setSearchQuery("");
+        setSelectedFilter(defaultFilter);
+      };
+    }, [loadData, defaultFilter])
+  );
 
   const filteredEntries = useMemo(
     () => searchEntries(filterByStatus(entries, selectedFilter), searchQuery),
