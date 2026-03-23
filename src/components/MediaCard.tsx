@@ -29,6 +29,10 @@ export function MediaCard({ entry, type, onProgressUpdate }: MediaCardProps) {
   const swipeTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
+    setLocalProgress(entry.progress);
+  }, [entry.progress]);
+
+  useEffect(() => {
     return () => {
       if (swipeTimerRef.current) clearTimeout(swipeTimerRef.current);
     };
