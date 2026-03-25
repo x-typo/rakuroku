@@ -435,8 +435,8 @@ export async function fetchMediaList(type: MediaType, accessToken?: string | nul
 
   let response = await doFetch(accessToken);
 
-  // AniList returns 500 for expired/revoked tokens - fall back to public query
-  if (!response.ok && accessToken) {
+  // AniList returns 500 (sometimes 401/403) for expired/revoked tokens - fall back to public query
+  if (accessToken && [401, 403, 500].includes(response.status)) {
     response = await doFetch();
   }
 
