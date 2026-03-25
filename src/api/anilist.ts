@@ -415,24 +415,30 @@ export async function fetchUser(): Promise<User> {
 }
 
 export async function fetchMediaList(type: MediaType, accessToken?: string | null): Promise<MediaListEntry[]> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (accessToken) {
-    headers.Authorization = `Bearer ${accessToken}`;
-  }
-
-  const response = await fetch(ANILIST_API, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      query: MEDIA_LIST_QUERY,
-      variables: {
-        userName: USERNAME,
-        type,
-      },
-    }),
+  const body = JSON.stringify({
+    query: MEDIA_LIST_QUERY,
+    variables: {
+      userName: USERNAME,
+      type,
+    },
   });
+
+  const doFetch = async (token?: string | null) => {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    return fetch(ANILIST_API, { method: "POST", headers, body });
+  };
+
+  let response = await doFetch(accessToken);
+
+  // AniList returns 500 for expired/revoked tokens - fall back to public query
+  if (!response.ok && accessToken) {
+    response = await doFetch();
+  }
 
   if (!response.ok) {
     handleApiError(response.status);
