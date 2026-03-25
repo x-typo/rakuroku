@@ -380,11 +380,19 @@ export default function MediaDetailScreen() {
       }
 
       if (!watchPath) {
-        setWatchError("Couldn't find this show on AnimeKai.");
         if (resolved.candidates.length > 0) {
-          setWatchCandidates(resolved.candidates);
-          setWatchCandidateModalVisible(true);
+          const best = resolved.candidates[0];
+          await animeKai.setOverrideWatchPath(mediaId, best.watchPath);
+          const url = buildAnimeKaiEpisodeUrl(best.watchPath, nextEp);
+          setWatchLoading(false);
+          if (Platform.OS === "web") {
+            void Linking.openURL(url);
+            return;
+          }
+          void openExternalUrl(url);
+          return;
         }
+        setWatchError("Couldn't find this show on AnimeKai.");
         setWatchLoading(false);
         return;
       }
