@@ -11,11 +11,11 @@ import {
   Image,
   ActivityIndicator,
   Pressable,
+  Linking,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
-import * as WebBrowser from "expo-web-browser";
 import { colors } from "../constants";
 import { fetchAiringSchedule, fetchMediaList } from "../api";
 import { AiringSchedule, MediaListEntry, MediaStatus } from "../types";
@@ -201,7 +201,7 @@ export default function ScheduleScreen() {
         return;
       }
 
-      await WebBrowser.openBrowserAsync(url);
+      await Linking.openURL(url);
     } catch (err) {
       Alert.alert(
         "Failed to open discussion",
