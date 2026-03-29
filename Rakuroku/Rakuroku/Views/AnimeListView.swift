@@ -28,7 +28,7 @@ struct AnimeListView: View {
         if !searchQuery.isEmpty {
             result = result.filter { $0.media.title.matches(searchQuery) }
         }
-        return result
+        return result.sorted { $0.updatedAt > $1.updatedAt }
     }
 
     var body: some View {

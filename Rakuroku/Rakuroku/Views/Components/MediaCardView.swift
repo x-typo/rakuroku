@@ -9,6 +9,7 @@ struct MediaCardView: View {
     @State private var isUpdating = false
     @State private var dragOffset: CGFloat = 0
     @State private var isSwiping = false
+    @State private var dragAxis: Axis?
 
     init(entry: MediaListEntry, type: MediaType) {
         self.entry = entry
@@ -156,23 +157,25 @@ struct MediaCardView: View {
     }
 
     private var swipeGesture: some Gesture {
-        DragGesture(minimumDistance: 30)
+        DragGesture(minimumDistance: 20)
             .onChanged { value in
                 guard authStore.isAuthenticated else { return }
-                let horizontal = abs(value.translation.width)
-                let vertical = abs(value.translation.height)
-                guard horizontal > vertical else { return }
+                if dragAxis == nil {
+                    dragAxis = abs(value.translation.width) > abs(value.translation.height) ? .horizontal : .vertical
+                }
+                guard dragAxis == .horizontal else { return }
                 isSwiping = true
                 dragOffset = value.translation.width
             }
             .onEnded { value in
+                let wasHorizontal = dragAxis == .horizontal
                 defer {
+                    dragAxis = nil
                     withAnimation { dragOffset = 0 }
-                    // Delay clearing isSwiping so the tap handler doesn't fire immediately
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { isSwiping = false }
                 }
 
-                guard authStore.isAuthenticated, !isUpdating else { return }
+                guard wasHorizontal, authStore.isAuthenticated, !isUpdating else { return }
 
                 if value.translation.width > 80 {
                     let canIncrement = total == nil || localProgress < (total ?? 0)
