@@ -447,7 +447,7 @@ struct MediaDetailView: View {
                     Text("\(progress)")
                         .font(.system(size: 36, weight: .bold))
                         .foregroundStyle(Theme.textPrimary)
-                    Text(total.map { "of \($0)" } ?? "episodes")
+                    Text(total.map { "of \($0)" } ?? (media.type == .manga ? "chapters" : "episodes"))
                         .font(.subheadline)
                         .foregroundStyle(Theme.textSecondary)
                 }
@@ -495,8 +495,9 @@ struct MediaDetailView: View {
         if media == nil { loading = true }
         error = nil
         do {
-            let d = try await AniListClient.shared.fetchMediaDetails(id: mediaId)
-            let e = try? await AniListClient.shared.fetchUserMediaEntry(mediaId: mediaId)
+            async let details = AniListClient.shared.fetchMediaDetails(id: mediaId)
+            async let entry = try? AniListClient.shared.fetchUserMediaEntry(mediaId: mediaId)
+            let (d, e) = try await (details, entry)
             media = d
             userEntry = e
         } catch {

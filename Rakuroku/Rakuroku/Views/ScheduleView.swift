@@ -142,9 +142,8 @@ struct ScheduleView: View {
         .opacity(isHighlighted ? 1 : 0.5)
     }
 
-    @MainActor private func openDiscussion(_ schedule: AiringSchedule) async {
+    private func openDiscussion(_ schedule: AiringSchedule) async {
         openingDiscussionId = schedule.id
-        defer { openingDiscussionId = nil }
 
         let url = await RedditDiscussion.findUrl(
             anilistId: schedule.media.id,
@@ -155,6 +154,7 @@ struct ScheduleView: View {
         if let url {
             await UIApplication.shared.open(url)
         }
+        openingDiscussionId = nil
     }
 
     private func loadData() async {
