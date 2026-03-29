@@ -1,6 +1,8 @@
 import SwiftUI
 
-struct AnimeListView: View {
+struct MediaListView: View {
+
+    let type: MediaType
 
     @Environment(AuthStore.self) private var authStore
 
@@ -8,17 +10,27 @@ struct AnimeListView: View {
     @State private var loading = true
     @State private var error: String?
     @State private var searchQuery = ""
-    @State private var selectedFilter = "Watching"
+    @State private var selectedFilter: String
     @State private var showFilter = false
     @State private var hasLoadedOnce = false
 
-    private let filters = ["All", "Watching", "Completed", "Dropped", "Planning"]
+    private var filters: [String] {
+        type == .anime
+            ? ["All", "Watching", "Completed", "Dropped", "Planning"]
+            : ["All", "Reading", "Completed", "Dropped", "Planning"]
+    }
+
+    init(type: MediaType) {
+        self.type = type
+        self._selectedFilter = State(initialValue: type == .anime ? "Watching" : "Reading")
+    }
 
     private var filteredEntries: [MediaListEntry] {
         var result = entries
         if selectedFilter != "All" {
             let statusMap: [String: [MediaListStatus]] = [
-                "Watching": [.current], "Completed": [.completed],
+                "Watching": [.current], "Reading": [.current],
+                "Completed": [.completed],
                 "Dropped": [.dropped], "Planning": [.planning],
             ]
             if let statuses = statusMap[selectedFilter] {
@@ -33,7 +45,6 @@ struct AnimeListView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
             HStack {
                 Text(selectedFilter)
                     .font(.title.bold())
@@ -55,7 +66,7 @@ struct AnimeListView: View {
                 ScrollView {
                     LazyVStack(spacing: 12) {
                         ForEach(filteredEntries) { entry in
-                            MediaCardView(entry: entry, type: .anime)
+                            MediaCardView(entry: entry, type: type)
                         }
                     }
                     .padding(.vertical, 8)
@@ -66,11 +77,11 @@ struct AnimeListView: View {
         .background(Theme.background)
         .task { await loadData() }
         .onAppear {
-            // Re-fetch on tab re-focus (like RN's useFocusEffect) to pick up progress changes
             if hasLoadedOnce { Task { await loadData() } }
         }
         .sheet(isPresented: $showFilter) {
-            FilterSheet(title: "Anime List", filters: filters, selectedFilter: $selectedFilter)
+            let title = type == .anime ? "Anime List" : "Manga List"
+            FilterSheet(title: title, filters: filters, selectedFilter: $selectedFilter)
         }
     }
 
@@ -78,11 +89,16 @@ struct AnimeListView: View {
         if !hasLoadedOnce { loading = true }
         error = nil
         do {
-            entries = try await AniListClient.shared.fetchMediaList(type: .anime, accessToken: authStore.accessToken)
+            entries = try await AniListClient.shared.fetchMediaList(type: type, accessToken: authStore.accessToken)
             hasLoadedOnce = true
         } catch {
             self.error = error.localizedDescription
         }
         loading = false
     }
+}
+
+// Tab wrappers
+struct AnimeListView: View {
+    var body: some View { MediaListView(type: .anime) }
 }

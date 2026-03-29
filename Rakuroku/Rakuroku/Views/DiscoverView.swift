@@ -24,6 +24,7 @@ struct DiscoverView: View {
         VStack(spacing: 0) {
             SearchBarView(text: $searchQuery)
                 .padding(.top, 16)
+                .padding(.bottom, 12)
 
             if !searchQuery.isEmpty {
                 searchResultsView
@@ -55,6 +56,7 @@ struct DiscoverView: View {
         }
         .background(Theme.background)
         .task { await loadData() }
+        .onDisappear { searchTask?.cancel() }
         .onChange(of: searchQuery) { _, newValue in
             searchTask?.cancel()
             if newValue.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -248,7 +250,9 @@ struct DiscoverView: View {
         let nextPage = currentPage + 1
         do {
             let result = try await AniListClient.shared.searchMedia(query: searchQuery, page: nextPage, perPage: 25)
-            searchResults.append(contentsOf: result.media)
+            let existingIds = Set(searchResults.map(\.id))
+            let newItems = result.media.filter { !existingIds.contains($0.id) }
+            searchResults.append(contentsOf: newItems)
             hasNextPage = result.hasNextPage
             currentPage = nextPage
         } catch {

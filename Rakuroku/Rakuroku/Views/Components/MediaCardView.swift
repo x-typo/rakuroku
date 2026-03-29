@@ -42,108 +42,98 @@ struct MediaCardView: View {
     }
 
     var body: some View {
-        ZStack {
-            // Swipe background
-            HStack {
-                if dragOffset > 0 {
-                    HStack(spacing: 4) {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.title2)
-                        Text("+1")
-                            .fontWeight(.semibold)
+        NavigationLink(value: MediaDetailDestination(mediaId: entry.media.id)) {
+            ZStack {
+                HStack {
+                    if dragOffset > 0 {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.title2)
+                            Text("+1")
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                     }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .background(Theme.primary)
-                }
-                Spacer()
-                if dragOffset < 0 {
-                    HStack(spacing: 4) {
-                        Text("-1")
-                            .fontWeight(.semibold)
-                        Image(systemName: "minus.circle.fill")
-                            .font(.title2)
+                    Spacer()
+                    if dragOffset < 0 {
+                        HStack(spacing: 4) {
+                            Text("-1")
+                                .fontWeight(.semibold)
+                            Image(systemName: "minus.circle.fill")
+                                .font(.title2)
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                     }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .background(Theme.error)
                 }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+                .background(dragOffset > 0 ? Theme.primary : dragOffset < 0 ? Theme.error : Color.clear)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
 
-            // Card
-            VStack(spacing: 0) {
-                HStack(spacing: 0) {
-                    AsyncCoverImage(url: entry.media.coverImage?.medium, width: 80, height: 130)
+                VStack(spacing: 0) {
+                    HStack(spacing: 0) {
+                        AsyncCoverImage(url: entry.media.coverImage?.medium, width: 80, height: 130)
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(entry.media.title.display)
-                            .font(.callout.weight(.semibold))
-                            .foregroundStyle(Theme.textPrimary)
-                            .lineLimit(2)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(entry.media.title.display)
+                                .font(.callout.weight(.semibold))
+                                .foregroundStyle(Theme.textPrimary)
+                                .lineLimit(2)
 
-                        HStack(spacing: 8) {
-                            Text(progressText)
-                                .font(.subheadline)
-                                .foregroundStyle(Theme.textSecondary)
-
-                            if isUpdating {
-                                ProgressView()
-                                    .tint(Theme.primary)
-                                    .scaleEffect(0.7)
-                            }
-
-                            if episodesBehind > 0 {
-                                Text("\(episodesBehind) \(episodesBehind == 1 ? "episode" : "episodes") behind")
+                            HStack(spacing: 8) {
+                                Text(progressText)
                                     .font(.subheadline)
-                                    .foregroundStyle(Theme.error)
+                                    .foregroundStyle(Theme.textSecondary)
+
+                                if isUpdating {
+                                    ProgressView()
+                                        .tint(Theme.primary)
+                                        .scaleEffect(0.7)
+                                }
+
+                                if episodesBehind > 0 {
+                                    Text("\(episodesBehind) \(episodesBehind == 1 ? "episode" : "episodes") behind")
+                                        .font(.subheadline)
+                                        .foregroundStyle(Theme.error)
+                                }
+                            }
+
+                            if let next = entry.media.nextAiringEpisode, type == .anime {
+                                Text(Formatters.nextAiring(next.airingAt, episode: next.episode))
+                                    .font(.caption)
+                                    .foregroundStyle(Theme.warning)
+                            }
+
+                            if let score = scoreText {
+                                Text(score)
+                                    .font(.subheadline)
+                                    .foregroundStyle(scoreColor)
                             }
                         }
+                        .padding(12)
 
-                        if let next = entry.media.nextAiringEpisode, type == .anime {
-                            Text(Formatters.nextAiring(next.airingAt, episode: next.episode))
-                                .font(.caption)
-                                .foregroundStyle(Theme.warning)
-                        }
-
-                        if let score = scoreText {
-                            Text(score)
-                                .font(.subheadline)
-                                .foregroundStyle(scoreColor)
-                        }
+                        Spacer(minLength: 0)
                     }
-                    .padding(12)
 
-                    Spacer(minLength: 0)
-                }
-
-                if let total, total > 0 {
-                    GeometryReader { geo in
-                        Rectangle()
-                            .fill(Theme.primary)
-                            .frame(width: geo.size.width * progressPercent)
+                    if let total, total > 0 {
+                        GeometryReader { geo in
+                            Rectangle()
+                                .fill(Theme.primary)
+                                .frame(width: geo.size.width * progressPercent)
+                        }
+                        .frame(height: 3)
+                        .background(Theme.surfaceLight)
                     }
-                    .frame(height: 3)
-                    .background(Theme.surfaceLight)
                 }
+                .background(Theme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .offset(x: dragOffset)
             }
-            .background(Theme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .offset(x: dragOffset)
-            .simultaneousGesture(swipeGesture)
         }
+        .buttonStyle(.plain)
+        .disabled(isSwiping)
+        .simultaneousGesture(swipeGesture)
         .padding(.horizontal, 16)
-        .background(
-            // Use NavigationLink in background to avoid styling issues
-            NavigationLink(value: MediaDetailDestination(mediaId: entry.media.id)) { EmptyView() }
-                .opacity(0)
-                .disabled(isSwiping)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture {
-            guard !isSwiping else { return }
-            // Tap handled by the background NavigationLink
-        }
         .onChange(of: entry.progress) { _, newValue in
             localProgress = newValue
         }
@@ -172,7 +162,7 @@ struct MediaCardView: View {
                 defer {
                     dragAxis = nil
                     withAnimation { dragOffset = 0 }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { isSwiping = false }
+                    Task { @MainActor in try? await Task.sleep(for: .milliseconds(300)); isSwiping = false }
                 }
 
                 guard wasHorizontal, authStore.isAuthenticated, !isUpdating else { return }
@@ -188,11 +178,12 @@ struct MediaCardView: View {
 
     private func handleProgressChange(delta: Int) {
         guard let token = authStore.accessToken else { return }
+        let previousProgress = localProgress
         let newProgress = localProgress + delta
         isUpdating = true
         localProgress = newProgress
 
-        Task {
+        Task { @MainActor in
             do {
                 try await AniListClient.shared.updateProgress(
                     mediaId: entry.media.id,
@@ -200,7 +191,7 @@ struct MediaCardView: View {
                     accessToken: token
                 )
             } catch {
-                localProgress = localProgress - delta
+                localProgress = previousProgress
             }
             isUpdating = false
         }

@@ -54,7 +54,7 @@ enum Formatters {
 
     static func nextSeason(after current: (season: Season, year: Int)) -> (season: Season, year: Int) {
         let order: [Season] = [.winter, .spring, .summer, .fall]
-        let idx = order.firstIndex(of: current.season)!
+        guard let idx = order.firstIndex(of: current.season) else { return (order[0], current.year + 1) }
         let nextIdx = (idx + 1) % 4
         return (order[nextIdx], nextIdx == 0 ? current.year + 1 : current.year)
     }
@@ -117,7 +117,7 @@ enum Formatters {
 
     static func formatFuzzyDate(_ date: FuzzyDate?) -> String {
         guard let date, let year = date.year else { return "TBA" }
-        if let month = date.month {
+        if let month = date.month, (1...12).contains(month) {
             let names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
             let dayStr = date.day.map { " \($0)," } ?? ""
             return "\(names[month - 1])\(dayStr) \(year)"

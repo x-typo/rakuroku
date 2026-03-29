@@ -20,13 +20,12 @@ actor AniListClient {
     static let shared = AniListClient()
 
     private let endpoint = URL(string: "https://graphql.anilist.co")!
-    private let username: String
+    private var username: String
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
 
     private init() {
-        // Read from environment or hardcode for personal use
-        self.username = ProcessInfo.processInfo.environment["ANILIST_USERNAME"] ?? "typo"
+        self.username = ProcessInfo.processInfo.environment["ANILIST_USERNAME"] ?? "xtypo"
     }
 
     // MARK: - Shared Response Types
@@ -41,7 +40,7 @@ actor AniListClient {
 
     private func execute<T: Decodable>(
         query: String,
-        variables: [String: AnyCodable],
+        variables: [String: AnyCodable] = [:],
         accessToken: String? = nil,
         as type: T.Type
     ) async throws -> T {
@@ -80,6 +79,10 @@ actor AniListClient {
     func fetchMediaList(type: MediaType, accessToken: String? = nil) async throws -> [MediaListEntry] {
         struct Response: Decodable { let MediaListCollection: MediaListCollection }
 
+        guard !username.isEmpty else {
+            throw AniListError.graphQLError("Not signed in")
+        }
+
         let result: Response
         do {
             result = try await execute(
@@ -102,6 +105,7 @@ actor AniListClient {
         }
 
         let allEntries = result.MediaListCollection.lists.flatMap(\.entries)
+            .filter { $0.media.isAdult != true }
         return allEntries.sorted { $0.updatedAt > $1.updatedAt }
     }
 
@@ -129,14 +133,25 @@ actor AniListClient {
         }
     }
 
-    func fetchUser() async throws -> AniListUser {
-        struct Response: Decodable { let User: AniListUser }
-        let result = try await execute(
-            query: Queries.user,
-            variables: ["name": AnyCodable(username)],
-            as: Response.self
-        )
-        return result.User
+    func fetchUser(accessToken: String? = nil) async throws -> AniListUser {
+        if let accessToken {
+            struct Response: Decodable { let Viewer: AniListUser }
+            let result = try await execute(
+                query: Queries.viewer,
+                accessToken: accessToken,
+                as: Response.self
+            )
+            username = result.Viewer.name
+            return result.Viewer
+        } else {
+            struct Response: Decodable { let User: AniListUser }
+            let result = try await execute(
+                query: Queries.user,
+                variables: ["name": AnyCodable(username)],
+                as: Response.self
+            )
+            return result.User
+        }
     }
 
     func fetchUserActivities(userId: Int, perPage: Int = 15) async throws -> [ListActivity] {
@@ -166,7 +181,7 @@ actor AniListClient {
         var page = 1
         var hasNextPage = true
 
-        while hasNextPage {
+        while hasNextPage && page <= 20 {
             struct Response: Decodable { let Page: AiringSchedulePage }
             let result = try await execute(
                 query: Queries.airingSchedule,
@@ -219,7 +234,7 @@ actor AniListClient {
         var page = 1
         var hasNextPage = true
 
-        while hasNextPage {
+        while hasNextPage && page <= 20 {
             struct Response: Decodable { let Studio: StudioDetails }
             let result = try await execute(
                 query: Queries.studio,
@@ -305,7 +320,7 @@ private enum Queries {
           entries {
             id status progress score updatedAt
             media {
-              id title { romaji english native }
+              id isAdult title { romaji english native }
               coverImage { large medium }
               episodes chapters format status averageScore
               nextAiringEpisode { airingAt timeUntilAiring episode }
@@ -344,6 +359,19 @@ private enum Queries {
     query ($userName: String, $mediaId: Int) {
       MediaList(userName: $userName, mediaId: $mediaId) {
         id status score progress
+      }
+    }
+    """
+
+    static let viewer = """
+    query {
+      Viewer {
+        id name
+        avatar { large medium } bannerImage
+        statistics {
+          anime { count episodesWatched minutesWatched }
+          manga { count chaptersRead }
+        }
       }
     }
     """
