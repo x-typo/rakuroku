@@ -49,7 +49,7 @@ struct StudioView: View {
         let title = item.title.display
         let year = Formatters.formatYear(item.startDate)
         let format = Formatters.formatType(item.format)
-        let epsText = item.type == .anime && item.episodes != nil ? "\(item.episodes!) eps" : ""
+        let epsText = item.type == .anime ? item.episodes.map { "\($0) eps" } ?? "" : ""
         let isUnreleased = item.status == "NOT_YET_RELEASED"
         let userStatus = userStatusMap[item.id]
 

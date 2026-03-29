@@ -210,7 +210,8 @@ actor AniListClient {
             variables: ["search": AnyCodable(query), "page": AnyCodable(page), "perPage": AnyCodable(perPage)],
             as: MediaPageResponse.self
         )
-        return (result.Page.media, result.Page.pageInfo.hasNextPage)
+        let filtered = result.Page.media.filter { $0.isAdult != true }
+        return (filtered, result.Page.pageInfo.hasNextPage)
     }
 
     func fetchStudioDetails(studioId: Int) async throws -> [StudioMedia] {
@@ -414,7 +415,7 @@ private enum Queries {
       Page(page: $page, perPage: $perPage) {
         pageInfo { hasNextPage currentPage }
         media(search: $search, sort: SEARCH_MATCH) {
-          id type title { romaji english native }
+          id isAdult type title { romaji english native }
           coverImage { large medium }
           episodes chapters format status averageScore popularity genres
           studios { edges { isMain node { id name isAnimationStudio } } }

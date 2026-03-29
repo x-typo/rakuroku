@@ -235,7 +235,10 @@ struct DiscoverView: View {
             let result = try await AniListClient.shared.searchMedia(query: query, page: 1, perPage: 25)
             searchResults = result.media
             hasNextPage = result.hasNextPage
-        } catch {}
+        } catch {
+            searchResults = []
+            hasNextPage = false
+        }
         searching = false
     }
 
