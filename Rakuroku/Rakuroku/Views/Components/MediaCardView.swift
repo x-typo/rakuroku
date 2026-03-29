@@ -162,7 +162,7 @@ struct MediaCardView: View {
                 defer {
                     dragAxis = nil
                     withAnimation { dragOffset = 0 }
-                    Task { try? await Task.sleep(for: .milliseconds(300)); isSwiping = false }
+                    Task { @MainActor in try? await Task.sleep(for: .milliseconds(300)); isSwiping = false }
                 }
 
                 guard wasHorizontal, authStore.isAuthenticated, !isUpdating else { return }
@@ -183,7 +183,7 @@ struct MediaCardView: View {
         isUpdating = true
         localProgress = newProgress
 
-        Task {
+        Task { @MainActor in
             do {
                 try await AniListClient.shared.updateProgress(
                     mediaId: entry.media.id,

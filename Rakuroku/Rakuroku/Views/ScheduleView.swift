@@ -142,7 +142,7 @@ struct ScheduleView: View {
         .opacity(isHighlighted ? 1 : 0.5)
     }
 
-    private func openDiscussion(_ schedule: AiringSchedule) async {
+    @MainActor private func openDiscussion(_ schedule: AiringSchedule) async {
         openingDiscussionId = schedule.id
         defer { openingDiscussionId = nil }
 
