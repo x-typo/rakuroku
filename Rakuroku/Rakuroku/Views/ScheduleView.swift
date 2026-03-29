@@ -34,9 +34,10 @@ struct ScheduleView: View {
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .padding(.horizontal, 16)
             .padding(.top, 16)
-            .gesture(
-                DragGesture()
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 30)
                     .onEnded { value in
+                        guard abs(value.translation.width) > abs(value.translation.height) else { return }
                         if value.translation.width < -50 {
                             selectedDay = (selectedDay + 1) % 7
                         } else if value.translation.width > 50 {

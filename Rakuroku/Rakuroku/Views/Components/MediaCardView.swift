@@ -129,7 +129,7 @@ struct MediaCardView: View {
             .background(Theme.surface)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .offset(x: dragOffset)
-            .gesture(swipeGesture)
+            .simultaneousGesture(swipeGesture)
         }
         .padding(.horizontal, 16)
         .background(
@@ -156,9 +156,12 @@ struct MediaCardView: View {
     }
 
     private var swipeGesture: some Gesture {
-        DragGesture()
+        DragGesture(minimumDistance: 30)
             .onChanged { value in
                 guard authStore.isAuthenticated else { return }
+                let horizontal = abs(value.translation.width)
+                let vertical = abs(value.translation.height)
+                guard horizontal > vertical else { return }
                 isSwiping = true
                 dragOffset = value.translation.width
             }
