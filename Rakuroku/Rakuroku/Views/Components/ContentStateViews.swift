@@ -2,9 +2,11 @@ import SwiftUI
 
 struct ContentLoadingView: View {
     var body: some View {
-        Spacer()
-        ProgressView().tint(Theme.primary)
-        Spacer()
+        VStack {
+            Spacer()
+            ProgressView().tint(Theme.primary)
+            Spacer()
+        }
     }
 }
 
@@ -13,10 +15,12 @@ struct ContentErrorView: View {
     let onRetry: () -> Void
 
     var body: some View {
-        Spacer()
-        Text(message).foregroundStyle(Theme.error).padding()
-        Button("Retry", action: onRetry)
-            .buttonStyle(.borderedProminent).tint(Theme.primary)
-        Spacer()
+        VStack {
+            Spacer()
+            Text(message).foregroundStyle(Theme.error).padding()
+            Button("Retry", action: onRetry)
+                .buttonStyle(.borderedProminent).tint(Theme.primary)
+            Spacer()
+        }
     }
 }

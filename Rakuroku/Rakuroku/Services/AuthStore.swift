@@ -2,7 +2,7 @@ import AuthenticationServices
 import Observation
 import SwiftUI
 
-@Observable
+@MainActor @Observable
 final class AuthStore {
     private(set) var accessToken: String?
     private(set) var isLoading = true
@@ -11,7 +11,7 @@ final class AuthStore {
     var isAuthenticated: Bool { accessToken != nil }
 
     private let tokenKey = "anilist_access_token"
-    private let clientId = "YOUR_CLIENT_ID"
+    private let clientId = "33626"
     private var authSession: ASWebAuthenticationSession? // Must retain for duration of auth flow
 
     init() {
@@ -19,7 +19,6 @@ final class AuthStore {
         isLoading = false
     }
 
-    @MainActor
     func login() async {
         guard !clientId.isEmpty, clientId != "YOUR_CLIENT_ID" else {
             authError = "Missing AniList client ID."
@@ -28,11 +27,9 @@ final class AuthStore {
 
         authError = nil
 
-        let redirectURI = "rakuroku://auth"
         let urlString = "https://anilist.co/api/v2/oauth/authorize"
             + "?client_id=\(clientId)"
             + "&response_type=token"
-            + "&redirect_uri=\(redirectURI.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? redirectURI)"
 
         guard let authURL = URL(string: urlString) else {
             authError = "Invalid auth URL."
@@ -110,6 +107,7 @@ final class AuthStore {
 }
 
 // Presentation context for ASWebAuthenticationSession
+@MainActor
 final class ASWebAuthContextProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
     static let shared = ASWebAuthContextProvider()
 

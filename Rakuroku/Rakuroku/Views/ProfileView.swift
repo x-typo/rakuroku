@@ -13,7 +13,9 @@ struct ProfileView: View {
 
     var body: some View {
         Group {
-            if loading {
+            if !authStore.isAuthenticated {
+                signedOutView
+            } else if loading {
                 ProgressView().tint(Theme.primary)
             } else if let error {
                 VStack(spacing: 16) {
@@ -39,9 +41,61 @@ struct ProfileView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.background)
-        .task { await loadData() }
+        .task { if authStore.isAuthenticated { await loadData() } }
+        .onChange(of: authStore.isAuthenticated) { _, isAuth in
+            if isAuth { Task { await loadData() } }
+        }
         .sheet(isPresented: $showManualTokenSheet) {
             manualTokenSheet
+        }
+    }
+
+    @ViewBuilder
+    private var signedOutView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "person.circle")
+                .font(.system(size: 50))
+                .foregroundStyle(Theme.textSecondary)
+            Text("Sign in to see your profile")
+                .font(.subheadline)
+                .foregroundStyle(Theme.textSecondary)
+
+            Button {
+                Task { await authStore.login() }
+            } label: {
+                Label("Sign in with AniList", systemImage: "person.crop.circle.badge.checkmark")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(Theme.primary)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+
+            Button {
+                showManualTokenSheet = true
+            } label: {
+                Label("Paste Access Token", systemImage: "key")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(Theme.surfaceLight)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+
+            if let authError = authStore.authError {
+                Button { authStore.clearAuthError() } label: {
+                    Text(authError)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Theme.error)
+                        .padding(12)
+                        .frame(maxWidth: .infinity)
+                        .background(Theme.error.opacity(0.15))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .padding(.horizontal, 16)
+            }
         }
     }
 
@@ -84,9 +138,8 @@ struct ProfileView: View {
                 .font(.subheadline)
                 .foregroundStyle(Theme.textSecondary)
         }
-        .frame(minWidth: 100)
+        .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
-        .padding(.horizontal, 24)
         .background(Theme.surface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
@@ -169,25 +222,20 @@ struct ProfileView: View {
             } else {
                 ForEach(activities) { activity in
                     NavigationLink(value: MediaDetailDestination(mediaId: activity.media.id)) {
-                        HStack(spacing: 0) {
+                        HStack(spacing: 10) {
                             AsyncCoverImage(url: activity.media.coverImage?.medium, width: 50, height: 70)
 
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(formatActivityStatus(activity))
-                                    .font(.subheadline)
-                                    .foregroundStyle(Theme.textPrimary)
-                                    .lineLimit(2)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-
-                            Spacer()
+                            Text(formatActivityStatus(activity))
+                                .font(.subheadline)
+                                .foregroundStyle(Theme.textPrimary)
+                                .lineLimit(2)
+                                .frame(maxWidth: .infinity, alignment: .leading)
 
                             Text(Formatters.timeAgo(activity.createdAt))
                                 .font(.caption)
                                 .foregroundStyle(Theme.textSecondary)
-                                .padding(.trailing, 12)
                         }
+                        .padding(12)
                         .background(Theme.surface)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
@@ -258,12 +306,13 @@ struct ProfileView: View {
         if user == nil { loading = true }
         error = nil
         do {
-            let userData = try await AniListClient.shared.fetchUser()
+            let userData = try await AniListClient.shared.fetchUser(accessToken: authStore.accessToken)
             user = userData
-            activities = try await AniListClient.shared.fetchUserActivities(userId: userData.id)
+            loading = false
+            activities = (try? await AniListClient.shared.fetchUserActivities(userId: userData.id)) ?? []
         } catch {
             self.error = error.localizedDescription
+            loading = false
         }
-        loading = false
     }
 }

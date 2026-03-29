@@ -17,24 +17,28 @@ struct MediaDetailView: View {
     @State private var updatingScore = false
     @State private var updatingStatus = false
     @State private var updatingProgress = false
+    @State private var mutationError: String?
 
     var body: some View {
         Group {
             if loading {
                 ProgressView().tint(Theme.primary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error {
                 VStack(spacing: 16) {
                     Text(error).foregroundStyle(Theme.error)
                     Button("Retry") { Task { await loadData() } }
                         .buttonStyle(.borderedProminent).tint(Theme.primary)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let media {
                 mediaContent(media)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.background)
-        .task { await loadData() }
+        .task(id: mediaId) {
+            await loadData()
+        }
     }
 
     @ViewBuilder
@@ -46,22 +50,24 @@ struct MediaDetailView: View {
 
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                // Banner
                 if let banner = media.bannerImage, let url = URL(string: banner) {
-                    AsyncImage(url: url) { phase in
-                        if case .success(let img) = phase {
-                            img.resizable().aspectRatio(contentMode: .fill)
-                        } else {
-                            Rectangle().fill(Theme.surface)
+                    GeometryReader { geo in
+                        AsyncImage(url: url) { phase in
+                            if case .success(let img) = phase {
+                                img.resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: geo.size.width, height: 180)
+                                    .clipped()
+                            } else {
+                                Rectangle().fill(Theme.surface)
+                            }
                         }
                     }
                     .frame(height: 180)
-                    .clipped()
                 } else {
                     Rectangle().fill(Theme.surface).frame(height: 80)
                 }
 
-                // Header: cover + title + status
                 HStack(alignment: .top, spacing: 16) {
                     AsyncCoverImage(url: media.coverImage?.large, width: 120, height: 180, cornerRadius: 8)
                         .shadow(radius: 8)
@@ -104,15 +110,12 @@ struct MediaDetailView: View {
                 }
                 .padding(.horizontal, 16)
 
-                // Stats row
                 statsRow(media)
 
-                // Action buttons (score, progress)
                 if canEditScore {
                     actionButtons(media)
                 }
 
-                // Genres
                 if let genres = media.genres, !genres.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
@@ -131,7 +134,6 @@ struct MediaDetailView: View {
                     .padding(.top, 12)
                 }
 
-                // Description
                 if let desc = media.description {
                     Text(Formatters.stripHtml(desc))
                         .font(.subheadline)
@@ -140,33 +142,25 @@ struct MediaDetailView: View {
                         .padding(.top, 16)
                 }
 
-                // Info grid
                 infoGrid(media, studio: studio)
 
-                // Relations
                 if let relations = media.relations?.edges, !relations.isEmpty {
                     relationsSection(relations)
                 }
 
-                // Share button
-                ShareLink(item: URL(string: "https://anilist.co/\(media.type?.rawValue.lowercased() ?? "anime")/\(media.id)")!) {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(Theme.textPrimary)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 12)
-                        .background(Theme.surface)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.top, 24)
-                .padding(.bottom, 32)
+                Spacer().frame(height: 32)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .refreshable { await loadData() }
         .sheet(isPresented: $showScoreModal) { scoreSheet }
         .sheet(isPresented: $showStatusModal) { statusSheet(media) }
         .sheet(isPresented: $showProgressModal) { progressSheet(media) }
+        .alert("Update Failed", isPresented: Binding(get: { mutationError != nil }, set: { if !$0 { mutationError = nil } })) {
+            Button("OK") { mutationError = nil }
+        } message: {
+            Text(mutationError ?? "")
+        }
     }
 
     // MARK: - Sub-views
@@ -195,6 +189,14 @@ struct MediaDetailView: View {
             }
             if let chaps = media.chapters {
                 Text("\(chaps) chapters")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.textSecondary)
+            }
+
+            Spacer()
+
+            ShareLink(item: URL(string: "https://anilist.co/\(media.type?.rawValue.lowercased() ?? "anime")/\(media.id)")!) {
+                Image(systemName: "square.and.arrow.up")
                     .font(.subheadline)
                     .foregroundStyle(Theme.textSecondary)
             }
@@ -287,7 +289,7 @@ struct MediaDetailView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
-                    ForEach(Array(relations.enumerated()), id: \.offset) { _, edge in
+                    ForEach(relations, id: \.node.id) { edge in
                         NavigationLink(value: MediaDetailDestination(mediaId: edge.node.id)) {
                             VStack(alignment: .leading, spacing: 4) {
                                 AsyncCoverImage(url: edge.node.coverImage?.large, width: 100, height: 140, cornerRadius: 6)
@@ -314,31 +316,76 @@ struct MediaDetailView: View {
 
     @ViewBuilder
     private var scoreSheet: some View {
-        VStack(spacing: 16) {
-            Text("Rate").font(.title3.bold()).foregroundStyle(Theme.textPrimary)
-            ForEach([10, 9, 8, 7, 6, 5, 4, 3, 2, 1], id: \.self) { score in
-                Button {
-                    Task { await handleScoreUpdate(Double(score)) }
-                } label: {
-                    HStack {
-                        Text("\(score)")
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(Theme.textPrimary)
-                        Spacer()
-                        if Int(userEntry?.score ?? 0) == score {
-                            Image(systemName: "checkmark")
-                                .foregroundStyle(Theme.primary)
+        let currentScore = Int(userEntry?.score ?? 0)
+        let columns = [GridItem(.flexible()), GridItem(.flexible())]
+
+        VStack(spacing: 20) {
+            LazyVGrid(columns: columns, spacing: 12) {
+                ForEach([10, 9, 8, 7, 6, 5, 4, 3, 2, 1], id: \.self) { score in
+                    Button {
+                        Task { await handleScoreUpdate(Double(score)) }
+                    } label: {
+                        VStack(spacing: 4) {
+                            Text("\(score)")
+                                .font(.title.bold())
+                                .foregroundStyle(.white)
+                            Text(scoreLabel(score))
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(.white.opacity(0.8))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(scoreGradient(score))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay {
+                            if currentScore == score {
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(.white, lineWidth: 2)
+                            }
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
                 }
             }
+            .padding(.horizontal, 16)
+
             if updatingScore { ProgressView().tint(Theme.primary) }
         }
-        .padding(.vertical, 16)
-        .presentationDetents([.large])
+        .padding(.top, 40)
+        .padding(.bottom, 20)
+        .presentationDetents([.medium])
         .presentationDragIndicator(.visible)
+    }
+
+    private func scoreGradient(_ score: Int) -> Color {
+        switch score {
+        case 10: Color(red: 0.0, green: 0.7, blue: 0.3)
+        case 9: Color(red: 0.1, green: 0.65, blue: 0.3)
+        case 8: Color(red: 0.2, green: 0.6, blue: 0.3)
+        case 7: Color(red: 0.4, green: 0.6, blue: 0.2)
+        case 6: Color(red: 0.6, green: 0.6, blue: 0.1)
+        case 5: Color(red: 0.7, green: 0.55, blue: 0.0)
+        case 4: Color(red: 0.8, green: 0.45, blue: 0.0)
+        case 3: Color(red: 0.85, green: 0.3, blue: 0.0)
+        case 2: Color(red: 0.9, green: 0.2, blue: 0.0)
+        case 1: Color(red: 0.85, green: 0.1, blue: 0.1)
+        default: Theme.surface
+        }
+    }
+
+    private func scoreLabel(_ score: Int) -> String {
+        switch score {
+        case 10: "Masterpiece"
+        case 9: "Great"
+        case 8: "Very Good"
+        case 7: "Good"
+        case 6: "Fine"
+        case 5: "Average"
+        case 4: "Bad"
+        case 3: "Very Bad"
+        case 2: "Horrible"
+        case 1: "Appalling"
+        default: ""
+        }
     }
 
     @ViewBuilder
@@ -382,40 +429,63 @@ struct MediaDetailView: View {
 
     @ViewBuilder
     private func progressSheet(_ media: MediaDetails) -> some View {
-        VStack(spacing: 24) {
-            Text("Progress").font(.title3.bold()).foregroundStyle(Theme.textPrimary)
+        let progress = userEntry?.progress ?? 0
+        let total = media.type == .anime ? media.episodes : media.chapters
+        let fraction: Double = if let total, total > 0 { Double(progress) / Double(total) } else { 0 }
 
-            let progress = userEntry?.progress ?? 0
-            let total = media.type == .anime ? media.episodes : media.chapters
+        VStack(spacing: 28) {
+            ZStack {
+                Circle()
+                    .stroke(Theme.surfaceLight, lineWidth: 10)
+                Circle()
+                    .trim(from: 0, to: fraction)
+                    .stroke(Theme.primary, style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeInOut(duration: 0.3), value: fraction)
 
-            Text(total.map { "\(progress) / \($0)" } ?? "\(progress)")
-                .font(.title.bold())
-                .foregroundStyle(Theme.textPrimary)
+                VStack(spacing: 2) {
+                    Text("\(progress)")
+                        .font(.system(size: 36, weight: .bold))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text(total.map { "of \($0)" } ?? "episodes")
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.textSecondary)
+                }
+            }
+            .frame(width: 150, height: 150)
 
-            HStack(spacing: 24) {
+            HStack(spacing: 40) {
                 Button {
                     Task { await handleProgressUpdate(delta: -1) }
                 } label: {
-                    Image(systemName: "minus.circle.fill")
-                        .font(.largeTitle)
-                        .foregroundStyle(Theme.error)
+                    Image(systemName: "minus")
+                        .font(.title2.bold())
+                        .foregroundStyle(.white)
+                        .frame(width: 56, height: 56)
+                        .background(Theme.error)
+                        .clipShape(Circle())
                 }
                 .disabled(progress <= 0 || updatingProgress)
+                .opacity(progress <= 0 || updatingProgress ? 0.4 : 1)
 
                 Button {
                     Task { await handleProgressUpdate(delta: 1) }
                 } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.largeTitle)
-                        .foregroundStyle(Theme.primary)
+                    Image(systemName: "plus")
+                        .font(.title2.bold())
+                        .foregroundStyle(.white)
+                        .frame(width: 56, height: 56)
+                        .background(Theme.primary)
+                        .clipShape(Circle())
                 }
                 .disabled(total.map { progress >= $0 } ?? false || updatingProgress)
+                .opacity(total.map { progress >= $0 } ?? false || updatingProgress ? 0.4 : 1)
             }
 
             if updatingProgress { ProgressView().tint(Theme.primary) }
         }
         .padding(24)
-        .presentationDetents([.height(250)])
+        .presentationDetents([.height(320)])
         .presentationDragIndicator(.visible)
     }
 
@@ -425,9 +495,8 @@ struct MediaDetailView: View {
         if media == nil { loading = true }
         error = nil
         do {
-            async let details = AniListClient.shared.fetchMediaDetails(id: mediaId)
-            async let entry = AniListClient.shared.fetchUserMediaEntry(mediaId: mediaId)
-            let (d, e) = try await (details, entry)
+            let d = try await AniListClient.shared.fetchMediaDetails(id: mediaId)
+            let e = try? await AniListClient.shared.fetchUserMediaEntry(mediaId: mediaId)
             media = d
             userEntry = e
         } catch {
@@ -443,7 +512,9 @@ struct MediaDetailView: View {
             try await AniListClient.shared.updateScore(mediaId: mediaId, score: score, accessToken: token)
             userEntry = UserMediaEntry(id: entry.id, status: entry.status, score: score, progress: entry.progress)
             showScoreModal = false
-        } catch {}
+        } catch {
+            mutationError = error.localizedDescription
+        }
         updatingScore = false
     }
 
@@ -459,7 +530,9 @@ struct MediaDetailView: View {
             }
             userEntry = UserMediaEntry(id: entry.id, status: status, score: newScore, progress: entry.progress)
             showStatusModal = false
-        } catch {}
+        } catch {
+            mutationError = error.localizedDescription
+        }
         updatingStatus = false
     }
 
@@ -470,7 +543,9 @@ struct MediaDetailView: View {
             try await AniListClient.shared.deleteMediaListEntry(entryId: entry.id, accessToken: token)
             userEntry = nil
             showStatusModal = false
-        } catch {}
+        } catch {
+            mutationError = error.localizedDescription
+        }
         updatingStatus = false
     }
 
@@ -481,7 +556,9 @@ struct MediaDetailView: View {
             let entry = try await AniListClient.shared.addToList(mediaId: mediaId, status: status, accessToken: token)
             userEntry = entry
             showStatusModal = false
-        } catch {}
+        } catch {
+            mutationError = error.localizedDescription
+        }
         updatingStatus = false
     }
 
@@ -495,7 +572,9 @@ struct MediaDetailView: View {
         do {
             try await AniListClient.shared.updateProgress(mediaId: mediaId, progress: newProgress, accessToken: token)
             userEntry = UserMediaEntry(id: entry.id, status: entry.status, score: entry.score, progress: newProgress)
-        } catch {}
+        } catch {
+            mutationError = error.localizedDescription
+        }
         updatingProgress = false
     }
 }
