@@ -143,11 +143,15 @@ enum Formatters {
         return "\(Int(diff / 604800))w ago"
     }
 
-    static func airingTime(_ airingAt: Int) -> String {
-        let date = Date(timeIntervalSince1970: Double(airingAt))
+    private static let airingTimeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
-        return formatter.string(from: date)
+        return formatter
+    }()
+
+    static func airingTime(_ airingAt: Int) -> String {
+        let date = Date(timeIntervalSince1970: Double(airingAt))
+        return airingTimeFormatter.string(from: date)
     }
 
     static func nextAiring(_ airingAt: Int, episode: Int? = nil) -> String {

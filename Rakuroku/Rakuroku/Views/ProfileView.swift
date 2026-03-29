@@ -224,6 +224,7 @@ struct ProfileView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(Theme.primary)
+                .disabled(manualTokenValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
                 Button("Cancel") {
                     showManualTokenSheet = false

@@ -54,7 +54,10 @@ final class AuthStore {
                 session.prefersEphemeralWebBrowserSession = false
                 session.presentationContextProvider = ASWebAuthContextProvider.shared
                 self.authSession = session // Retain session for auth flow duration
-                session.start()
+                if !session.start() {
+                    self.authSession = nil
+                    continuation.resume(throwing: AniListError.graphQLError("Unable to start auth session"))
+                }
             }
 
             // Parse token from fragment: #access_token=xxx&token_type=Bearer&expires_in=xxx

@@ -149,14 +149,7 @@ struct MediaDetailView: View {
                 }
 
                 // Share button
-                Button {
-                    let url = "https://anilist.co/\(media.type?.rawValue.lowercased() ?? "anime")/\(media.id)"
-                    let av = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-                    if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                       let root = scene.windows.first?.rootViewController {
-                        root.present(av, animated: true)
-                    }
-                } label: {
+                ShareLink(item: URL(string: "https://anilist.co/\(media.type?.rawValue.lowercased() ?? "anime")/\(media.id)")!) {
                     Label("Share", systemImage: "square.and.arrow.up")
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(Theme.textPrimary)
