@@ -248,7 +248,9 @@ struct DiscoverView: View {
             searchResults.append(contentsOf: result.media)
             hasNextPage = result.hasNextPage
             currentPage = nextPage
-        } catch {}
+        } catch {
+            hasNextPage = false
+        }
         loadingMore = false
     }
 }

@@ -65,7 +65,7 @@ final class AuthStore {
 
             let params = fragment.split(separator: "&").reduce(into: [String: String]()) { dict, pair in
                 let parts = pair.split(separator: "=", maxSplits: 1)
-                if parts.count == 2 { dict[String(parts[0])] = String(parts[1]) }
+                if parts.count == 2 { dict[String(parts[0])] = String(parts[1]).removingPercentEncoding ?? String(parts[1]) }
             }
 
             guard let token = params["access_token"], !token.isEmpty else {

@@ -9,7 +9,6 @@ struct MediaDetailView: View {
     @State private var userEntry: UserMediaEntry?
     @State private var loading = true
     @State private var error: String?
-    @State private var refreshing = false
 
     // Modals
     @State private var showScoreModal = false
@@ -445,11 +444,11 @@ struct MediaDetailView: View {
     }
 
     private func handleScoreUpdate(_ score: Double) async {
-        guard let token = authStore.accessToken else { return }
+        guard let token = authStore.accessToken, let entry = userEntry else { return }
         updatingScore = true
         do {
             try await AniListClient.shared.updateScore(mediaId: mediaId, score: score, accessToken: token)
-            userEntry = UserMediaEntry(id: userEntry!.id, status: userEntry!.status, score: score, progress: userEntry!.progress)
+            userEntry = UserMediaEntry(id: entry.id, status: entry.status, score: score, progress: entry.progress)
             showScoreModal = false
         } catch {}
         updatingScore = false

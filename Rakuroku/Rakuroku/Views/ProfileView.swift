@@ -211,7 +211,7 @@ struct ProfileView: View {
                 .foregroundStyle(Theme.textSecondary)
                 .multilineTextAlignment(.center)
 
-            TextField("access_token...", text: $manualTokenValue)
+            SecureField("access_token...", text: $manualTokenValue)
                 .textFieldStyle(.roundedBorder)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
