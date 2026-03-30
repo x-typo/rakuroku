@@ -14,7 +14,7 @@ Flag violations of these conventions during review.
 
 - **MVVM-inspired**: Views bind to `@Observable` stores, services handle I/O.
 - Models are structs with computed properties. No side effects in models.
-- All GraphQL queries live in static `Queries` enum, mutations in `Mutations` enum inside `AniListClient`. Never inline query strings in views or stores.
+- All GraphQL queries live in `private enum Queries`, mutations in `private enum Mutations`, defined at file scope in `AniListClient.swift`. Never inline query strings in views or stores.
 - Type definitions for API responses are defined inline near the query that uses them, inside the client methods.
 
 ## Concurrency
@@ -23,15 +23,15 @@ Flag violations of these conventions during review.
 - All network calls use async/await. No completion handlers.
 - `@MainActor` required on stores and services that update UI state (`AuthStore`, `AnimeKaiStore`).
 - OAuth flow uses `withCheckedThrowingContinuation` for bridging `ASWebAuthenticationSession`. Continuation must resume exactly once.
-- Pagination loops must respect task cancellation.
+- Pagination loops should check `Task.isCancelled` or call `Task.checkCancellation()` when practical. New pagination code must include cancellation checks.
 
 ## Error Handling
 
 - Custom `AniListError` enum conforming to `LocalizedError`.
 - HTTP 429 (rate limit) must be detected and surfaced, not silently retried.
 - Graceful fallback: if token-authenticated request fails with auth error, retry without token before surfacing error.
-- Views display errors via state-driven `ContentStateViews` (loading/error/empty patterns).
-- Adult content filtered by default (`isAdult != true`). Flag any query missing this filter.
+- Views display errors via `ContentLoadingView` and `ContentErrorView` (defined in `ContentStateViews.swift`). All data screens handle loading, error, and empty states.
+- Adult content filtered client-side after decoding (`.filter { $0.isAdult != true }`). New queries that return media must include this filter in the client method.
 
 ## State Management
 
@@ -45,14 +45,14 @@ Flag violations of these conventions during review.
 
 - Tokens in Keychain only. Flag any token written to UserDefaults or files.
 - Custom URL scheme (`rakuroku://`) validated before processing callbacks.
-- No hardcoded client IDs in source.
+- No hardcoded secrets (OAuth client secrets, API keys, tokens) in source. Public OAuth client IDs may be hardcoded as constants.
 
 ## SwiftUI Patterns
 
 - Per-tab `NavigationStack` with shared destination types (`MediaDetailDestination`, `StudioDestination`, `SeasonListDestination`).
 - Swipe gestures on `MediaCardView` for progress updates (left: -1, right: +1). Progress must not exceed total episodes/chapters.
 - Pull-to-refresh on all list views.
-- `AsyncCoverImage` for remote images. No inline `AsyncImage` with custom placeholder logic.
+- `AsyncCoverImage` for cover art and thumbnails. Inline `AsyncImage` is acceptable for one-off cases like banner images in `MediaDetailView`.
 - `FilterSheet` for status filtering. Filter state lives in the parent view, not the sheet.
 
 ## Theming
@@ -63,7 +63,7 @@ Flag violations of these conventions during review.
 
 ## Testing
 
-- Swift Testing framework (`@Suite`, `@Test`, `#expect`) for new tests.
+- Swift Testing framework (`@Suite`, `@Test`, `#expect`) is the target direction once a Swift test target is added.
 - Test pure functions: model computed properties, formatting, parsing.
 - AnimeKai resolver HTML parsing is a priority test target.
 - No mocking framework needed. Test with real domain objects.
@@ -81,4 +81,4 @@ Flag violations of these conventions during review.
 - `LazyVStack` for scrollable lists. Not `VStack` with `ForEach`.
 - Pagination: fetch next page on scroll near bottom. Cap at 20 pages for large datasets.
 - AnimeKai resolved paths cached in `AnimeKaiStore` (UserDefaults). Flag redundant lookups.
-- `@discardableResult` for fire-and-forget mutations (e.g., progress updates).
+- `@discardableResult` on helpers where callers may ignore the return value (e.g., `KeychainHelper` write methods).
