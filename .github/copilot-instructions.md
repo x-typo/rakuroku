@@ -12,7 +12,7 @@ Flag violations of these conventions during review.
 
 ## Architecture
 
-- **MVVM-inspired**: Views bind to `@Observable` stores, services handle I/O.
+- App-wide state (auth, AnimeKai cache) lives in `@Observable` stores. Screen-level state uses `@State` and calls `AniListClient` directly.
 - Models are structs with computed properties. No side effects in models.
 - All GraphQL queries live in `private enum Queries`, mutations in `private enum Mutations`, defined at file scope in `AniListClient.swift`. Never inline query strings in views or stores.
 - Type definitions for API responses are typically defined inline inside client methods. Shared response structs reused across methods (e.g., `MediaPage`, `MediaPageResponse`) may be defined at file scope.
@@ -30,7 +30,7 @@ Flag violations of these conventions during review.
 - Custom `AniListError` enum conforming to `LocalizedError`.
 - HTTP 429 (rate limit) must be detected and surfaced, not silently retried.
 - Graceful fallback: if token-authenticated request fails with auth error, retry without token before surfacing error.
-- Views display errors via `ContentLoadingView` and `ContentErrorView` (defined in `ContentStateViews.swift`). All data screens handle loading, error, and empty states.
+- Prefer `ContentLoadingView` and `ContentErrorView` (defined in `ContentStateViews.swift`) for list screens. Detail screens may use custom loading/error UI. All data screens must handle loading, error, and empty states.
 - Adult content filtered client-side after decoding (`.filter { $0.isAdult != true }`). New queries that return media must include this filter in the client method.
 
 ## State Management
