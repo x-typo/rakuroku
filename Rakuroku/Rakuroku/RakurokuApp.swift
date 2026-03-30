@@ -3,11 +3,13 @@ import SwiftUI
 @main
 struct RakurokuApp: App {
     @State private var authStore = AuthStore()
+    @State private var animeKaiStore = AnimeKaiStore()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(authStore)
+                .environment(animeKaiStore)
                 .preferredColorScheme(.dark)
         }
     }
