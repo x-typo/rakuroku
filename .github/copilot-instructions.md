@@ -44,7 +44,7 @@ Flag violations of these conventions during review.
 ## Security
 
 - Tokens in Keychain only. Flag any token written to UserDefaults or files.
-- Custom URL scheme (`rakuroku://`) validated before processing callbacks.
+- OAuth callback uses `ASWebAuthenticationSession` with `.customScheme("rakuroku")`, which handles scheme validation. The callback handler validates the fragment exists before parsing tokens.
 - No hardcoded secrets (OAuth client secrets, API keys, tokens) in source. Public OAuth client IDs may be hardcoded as constants.
 
 ## SwiftUI Patterns
@@ -81,4 +81,4 @@ Flag violations of these conventions during review.
 - `LazyVStack` for scrollable lists. Not `VStack` with `ForEach`.
 - Pagination: fetch next page on scroll near bottom. Cap at 20 pages for large datasets.
 - AnimeKai resolved paths cached in `AnimeKaiStore` (UserDefaults). Flag redundant lookups.
-- `@discardableResult` on helpers where callers may ignore the return value (e.g., `KeychainHelper` write methods).
+- `@discardableResult` on helpers where callers may ignore the return value (e.g., `KeychainHelper.delete()`). Not yet applied consistently to all write methods.
