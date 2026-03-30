@@ -89,7 +89,7 @@ struct MediaListView: View {
         if !hasLoadedOnce { loading = true }
         error = nil
         do {
-            entries = try await AniListClient.shared.fetchMediaList(type: type, accessToken: authStore.accessToken)
+            entries = try await AniListClient.shared.fetchMediaList(type: type, username: authStore.username, accessToken: authStore.accessToken)
             hasLoadedOnce = true
         } catch {
             self.error = error.localizedDescription

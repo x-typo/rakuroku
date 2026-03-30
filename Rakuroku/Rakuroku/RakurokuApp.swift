@@ -1,7 +1,16 @@
 import SwiftUI
 
+class AppDelegate: NSObject, UIApplicationDelegate {
+    static var allowLandscape = false
+
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        Self.allowLandscape ? [.portrait, .landscapeLeft, .landscapeRight] : .portrait
+    }
+}
+
 @main
 struct RakurokuApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var authStore = AuthStore()
     @State private var animeKaiStore = AnimeKaiStore()
 
@@ -59,9 +68,9 @@ struct ContentView: View {
         .task {
             if let token = authStore.accessToken {
                 do {
-                    _ = try await AniListClient.shared.fetchUser(accessToken: token)
+                    let user = try await AniListClient.shared.fetchAuthenticatedUser(accessToken: token)
+                    authStore.updateUsername(user.name)
                 } catch {
-                    // Token is invalid/expired - clear it so user can re-sign in
                     authStore.logout()
                 }
             }

@@ -306,7 +306,13 @@ struct ProfileView: View {
         if user == nil { loading = true }
         error = nil
         do {
-            let userData = try await AniListClient.shared.fetchUser(accessToken: authStore.accessToken)
+            let userData: AniListUser
+            if let token = authStore.accessToken {
+                userData = try await AniListClient.shared.fetchAuthenticatedUser(accessToken: token)
+                authStore.updateUsername(userData.name)
+            } else {
+                userData = try await AniListClient.shared.fetchUser(name: authStore.username)
+            }
             user = userData
             loading = false
             activities = (try? await AniListClient.shared.fetchUserActivities(userId: userData.id)) ?? []

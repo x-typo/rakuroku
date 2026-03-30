@@ -20,13 +20,10 @@ actor AniListClient {
     static let shared = AniListClient()
 
     private let endpoint = URL(string: "https://graphql.anilist.co")!
-    private var username: String
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
 
-    private init() {
-        self.username = ProcessInfo.processInfo.environment["ANILIST_USERNAME"] ?? "xtypo"
-    }
+    private init() {}
 
     // MARK: - Shared Response Types
 
@@ -76,7 +73,7 @@ actor AniListClient {
 
     // MARK: - Queries
 
-    func fetchMediaList(type: MediaType, accessToken: String? = nil) async throws -> [MediaListEntry] {
+    func fetchMediaList(type: MediaType, username: String, accessToken: String? = nil) async throws -> [MediaListEntry] {
         struct Response: Decodable { let MediaListCollection: MediaListCollection }
 
         guard !username.isEmpty else {
@@ -119,7 +116,7 @@ actor AniListClient {
         return result.Media
     }
 
-    func fetchUserMediaEntry(mediaId: Int) async throws -> UserMediaEntry? {
+    func fetchUserMediaEntry(mediaId: Int, username: String) async throws -> UserMediaEntry? {
         struct Response: Decodable { let MediaList: UserMediaEntry? }
         do {
             let result = try await execute(
@@ -133,25 +130,24 @@ actor AniListClient {
         }
     }
 
-    func fetchUser(accessToken: String? = nil) async throws -> AniListUser {
-        if let accessToken {
-            struct Response: Decodable { let Viewer: AniListUser }
-            let result = try await execute(
-                query: Queries.viewer,
-                accessToken: accessToken,
-                as: Response.self
-            )
-            username = result.Viewer.name
-            return result.Viewer
-        } else {
-            struct Response: Decodable { let User: AniListUser }
-            let result = try await execute(
-                query: Queries.user,
-                variables: ["name": AnyCodable(username)],
-                as: Response.self
-            )
-            return result.User
-        }
+    func fetchAuthenticatedUser(accessToken: String) async throws -> AniListUser {
+        struct Response: Decodable { let Viewer: AniListUser }
+        let result = try await execute(
+            query: Queries.viewer,
+            accessToken: accessToken,
+            as: Response.self
+        )
+        return result.Viewer
+    }
+
+    func fetchUser(name: String) async throws -> AniListUser {
+        struct Response: Decodable { let User: AniListUser }
+        let result = try await execute(
+            query: Queries.user,
+            variables: ["name": AnyCodable(name)],
+            as: Response.self
+        )
+        return result.User
     }
 
     func fetchUserActivities(userId: Int, perPage: Int = 15) async throws -> [ListActivity] {

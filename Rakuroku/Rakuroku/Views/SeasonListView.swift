@@ -5,6 +5,7 @@ struct SeasonListView: View {
     let year: Int
     let label: String
 
+    @Environment(AuthStore.self) private var authStore
 
     @State private var media: [SeasonalMedia] = []
     @State private var userStatusMap: [Int: MediaListStatus] = [:]
@@ -115,7 +116,7 @@ struct SeasonListView: View {
         currentPage = 1
         do {
             async let seasonData = AniListClient.shared.fetchSeasonalAnime(season: season, year: year, page: 1, perPage: 25)
-            async let animeList = AniListClient.shared.fetchMediaList(type: .anime)
+            async let animeList = AniListClient.shared.fetchMediaList(type: .anime, username: authStore.username)
             let (s, list) = try await (seasonData, animeList)
             media = s.media
             hasNextPage = s.hasNextPage
