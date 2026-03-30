@@ -5,18 +5,27 @@ import SwiftUI
 @MainActor @Observable
 final class AuthStore {
     private(set) var accessToken: String?
+    private(set) var username: String
     private(set) var isLoading = true
     private(set) var authError: String?
 
     var isAuthenticated: Bool { accessToken != nil }
 
     private let tokenKey = "anilist_access_token"
+    private let usernameKey = "anilist_username"
+    private let defaultUsername = ProcessInfo.processInfo.environment["ANILIST_USERNAME"] ?? "xtypo"
     private let clientId = "33626"
     private var authSession: ASWebAuthenticationSession? // Must retain for duration of auth flow
 
     init() {
         accessToken = KeychainHelper.loadString(key: tokenKey)
+        username = UserDefaults.standard.string(forKey: usernameKey) ?? defaultUsername
         isLoading = false
+    }
+
+    func updateUsername(_ name: String) {
+        username = name
+        UserDefaults.standard.set(name, forKey: usernameKey)
     }
 
     func login() async {
@@ -88,6 +97,8 @@ final class AuthStore {
     func logout() {
         KeychainHelper.delete(key: tokenKey)
         accessToken = nil
+        username = defaultUsername
+        UserDefaults.standard.removeObject(forKey: usernameKey)
     }
 
     func setManualToken(_ token: String) {

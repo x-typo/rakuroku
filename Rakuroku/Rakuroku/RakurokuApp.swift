@@ -59,9 +59,9 @@ struct ContentView: View {
         .task {
             if let token = authStore.accessToken {
                 do {
-                    _ = try await AniListClient.shared.fetchUser(accessToken: token)
+                    let user = try await AniListClient.shared.fetchAuthenticatedUser(accessToken: token)
+                    authStore.updateUsername(user.name)
                 } catch {
-                    // Token is invalid/expired - clear it so user can re-sign in
                     authStore.logout()
                 }
             }
