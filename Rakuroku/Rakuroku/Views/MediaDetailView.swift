@@ -746,10 +746,11 @@ struct MediaDetailView: View {
         if media == nil { loading = true }
         error = nil
         do {
-            let details = try await AniListClient.shared.fetchMediaDetails(id: mediaId)
-            let entry = try? await AniListClient.shared.fetchUserMediaEntry(mediaId: mediaId)
-            media = details
-            userEntry = entry
+            async let details = AniListClient.shared.fetchMediaDetails(id: mediaId)
+            async let entry = try? AniListClient.shared.fetchUserMediaEntry(mediaId: mediaId)
+            let (d, e) = try await (details, entry)
+            media = d
+            userEntry = e
         } catch {
             self.error = error.localizedDescription
         }

@@ -1,6 +1,6 @@
 import Foundation
 
-enum AnimeKaiResolver {
+nonisolated enum AnimeKaiResolver {
 
     private static let baseURL = "https://animekai.to"
     private static let userAgent = "rakuroku/1.0 (animekai-resolver)"
@@ -39,8 +39,9 @@ enum AnimeKaiResolver {
     }
 
     static func buildSearchURL(title: String) -> URL? {
-        guard let encoded = title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return nil }
-        return URL(string: "\(baseURL)/browser?keyword=\(encoded)")
+        var components = URLComponents(string: "\(baseURL)/browser")
+        components?.queryItems = [URLQueryItem(name: "keyword", value: title)]
+        return components?.url
     }
 
     // MARK: - Input Normalization
