@@ -1,7 +1,16 @@
 import SwiftUI
 
+class AppDelegate: NSObject, UIApplicationDelegate {
+    static var allowLandscape = false
+
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        Self.allowLandscape ? [.portrait, .landscapeLeft, .landscapeRight] : .portrait
+    }
+}
+
 @main
 struct RakurokuApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var authStore = AuthStore()
     @State private var animeKaiStore = AnimeKaiStore()
 

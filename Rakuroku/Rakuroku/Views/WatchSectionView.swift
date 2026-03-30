@@ -116,6 +116,12 @@ struct WatchSectionView: View {
         .fullScreenCover(item: $safariDestination) { dest in
             SafariView(url: dest.url)
                 .ignoresSafeArea()
+                .onAppear { AppDelegate.allowLandscape = true }
+                .onDisappear {
+                    AppDelegate.allowLandscape = false
+                    let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene
+                    scene?.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
+                }
         }
     }
 
