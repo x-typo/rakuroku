@@ -15,7 +15,7 @@ Flag violations of these conventions during review.
 - **MVVM-inspired**: Views bind to `@Observable` stores, services handle I/O.
 - Models are structs with computed properties. No side effects in models.
 - All GraphQL queries live in `private enum Queries`, mutations in `private enum Mutations`, defined at file scope in `AniListClient.swift`. Never inline query strings in views or stores.
-- Type definitions for API responses are defined inline near the query that uses them, inside the client methods.
+- Type definitions for API responses are typically defined inline inside client methods. Shared response structs reused across methods (e.g., `MediaPage`, `MediaPageResponse`) may be defined at file scope.
 
 ## Concurrency
 
@@ -57,7 +57,7 @@ Flag violations of these conventions during review.
 
 ## Theming
 
-- All colors from `Theme` enum in `Constants/Theme.swift`. No hardcoded color literals.
+- App-specific colors from `Theme` enum in `Constants/Theme.swift`. System colors (`.white`, `.clear`) and their opacity variants are acceptable for overlays and indicators.
 - Dark theme only. No light mode support. Flag any `colorScheme` conditionals.
 - Status colors: watching = green, completed = blue, dropped = red, paused = yellow, planning = gray.
 
