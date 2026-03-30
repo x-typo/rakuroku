@@ -59,7 +59,8 @@ nonisolated enum AnimeKaiResolver {
 
         // Path: /watch/slug
         if trimmed.hasPrefix("/watch/") && trimmed.count > 7 {
-            return trimmed.components(separatedBy: "#").first ?? trimmed
+            let clean = trimmed.components(separatedBy: "#").first ?? trimmed
+            return clean.components(separatedBy: "?").first ?? clean
         }
 
         // Embedded path: contains /watch/slug somewhere
