@@ -42,34 +42,34 @@ struct MediaCardView: View {
     }
 
     var body: some View {
-        NavigationLink(value: MediaDetailDestination(mediaId: entry.media.id)) {
-            ZStack {
-                HStack {
-                    if dragOffset > 0 {
-                        HStack(spacing: 4) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.title2)
-                            Text("+1")
-                                .fontWeight(.semibold)
-                        }
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        ZStack {
+            HStack {
+                if dragOffset > 0 {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.title2)
+                        Text("+1")
+                            .fontWeight(.semibold)
                     }
-                    Spacer()
-                    if dragOffset < 0 {
-                        HStack(spacing: 4) {
-                            Text("-1")
-                                .fontWeight(.semibold)
-                            Image(systemName: "minus.circle.fill")
-                                .font(.title2)
-                        }
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 }
-                .background(dragOffset > 0 ? Theme.primary : dragOffset < 0 ? Theme.error : Color.clear)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                Spacer()
+                if dragOffset < 0 {
+                    HStack(spacing: 4) {
+                        Text("-1")
+                            .fontWeight(.semibold)
+                        Image(systemName: "minus.circle.fill")
+                            .font(.title2)
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                }
+            }
+            .background(dragOffset > 0 ? Theme.primary : dragOffset < 0 ? Theme.error : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
 
+            NavigationLink(value: MediaDetailDestination(mediaId: entry.media.id)) {
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
                         AsyncCoverImage(url: entry.media.coverImage?.medium, width: 80, height: 130)
@@ -125,12 +125,12 @@ struct MediaCardView: View {
                         .background(Theme.surfaceLight)
                     }
                 }
-                .background(Theme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .offset(x: dragOffset)
             }
+            .buttonStyle(.plain)
+            .background(Theme.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .offset(x: dragOffset)
         }
-        .buttonStyle(.plain)
         .disabled(isSwiping)
         .simultaneousGesture(swipeGesture)
         .padding(.horizontal, 16)

@@ -57,6 +57,7 @@ struct MediaListView: View {
             .onTapGesture { showFilter = true }
 
             SearchBarView(text: $searchQuery)
+                .padding(.bottom, 8)
 
             if loading {
                 ContentLoadingView()
