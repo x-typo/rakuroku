@@ -133,12 +133,17 @@ struct WatchSectionView: View {
         .padding(.horizontal, 16)
         .padding(.top, 12)
         .task(id: currentProgress) {
+            guard canWatch else {
+                discussionUrl = nil
+                return
+            }
             let episode: Int
             if currentProgress > 0 {
                 episode = currentProgress
             } else if let nextEp = media.nextAiringEpisode, nextEp.episode > 1 {
                 episode = nextEp.episode - 1
             } else {
+                discussionUrl = nil
                 return
             }
             discussionUrl = await RedditDiscussion.findUrl(
