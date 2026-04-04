@@ -92,6 +92,7 @@ struct MediaListView: View {
         do {
             entries = try await AniListClient.shared.fetchMediaList(type: type, username: authStore.username, accessToken: authStore.accessToken)
             hasLoadedOnce = true
+        } catch where error.isCancellation {
         } catch {
             self.error = error.localizedDescription
         }
@@ -99,7 +100,6 @@ struct MediaListView: View {
     }
 }
 
-// Tab wrappers
 struct AnimeListView: View {
     var body: some View { MediaListView(type: .anime) }
 }
