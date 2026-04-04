@@ -225,6 +225,7 @@ struct DiscoverView: View {
             let (c, n) = try await (current, next)
             currentSeasonAnime = c.media
             nextSeasonAnime = n.media
+        } catch where error.isCancellation {
         } catch {
             self.error = error.localizedDescription
         }

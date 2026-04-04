@@ -10,7 +10,6 @@ struct MediaDetailView: View {
     @State private var loading = true
     @State private var error: String?
 
-    // Modals
     @State private var showScoreModal = false
     @State private var showStatusModal = false
     @State private var showProgressModal = false
@@ -502,6 +501,7 @@ struct MediaDetailView: View {
             let details = try await AniListClient.shared.fetchMediaDetails(id: mediaId)
             media = details
             userEntry = try? await AniListClient.shared.fetchUserMediaEntry(mediaId: mediaId, username: authStore.username)
+        } catch where error.isCancellation {
         } catch {
             self.error = error.localizedDescription
         }

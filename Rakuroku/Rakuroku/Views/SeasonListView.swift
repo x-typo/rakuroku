@@ -121,6 +121,7 @@ struct SeasonListView: View {
             media = s.media
             hasNextPage = s.hasNextPage
             userStatusMap = Dictionary(uniqueKeysWithValues: list.map { ($0.media.id, $0.status) })
+        } catch where error.isCancellation {
         } catch {
             self.error = error.localizedDescription
         }

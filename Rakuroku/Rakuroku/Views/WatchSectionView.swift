@@ -21,6 +21,7 @@ struct WatchSectionView: View {
     @State private var overrideInput = ""
     @State private var overrideInputError: String?
     @State private var safariDestination: SafariDestination?
+    @State private var discussionUrl: URL?
 
     private var currentProgress: Int { userEntry?.progress ?? 0 }
     private var nextEp: Int { currentProgress + 1 }
@@ -79,6 +80,26 @@ struct WatchSectionView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
 
+                    Button {
+                        if let url = discussionUrl {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "bubble.left.fill")
+                                .font(.caption2)
+                            Text("Discuss")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .foregroundStyle(discussionUrl != nil ? Theme.textPrimary : Theme.textSecondary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Theme.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .opacity(discussionUrl != nil ? 1 : 0.4)
+                    }
+                    .disabled(discussionUrl == nil)
+
                     if animeKaiStore.hasOverride(mediaId: media.id) {
                         Button {
                             animeKaiStore.clearOverride(mediaId: media.id)
@@ -111,6 +132,26 @@ struct WatchSectionView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 12)
+        .task(id: currentProgress) {
+            guard canWatch else {
+                discussionUrl = nil
+                return
+            }
+            let episode: Int
+            if currentProgress > 0 {
+                episode = currentProgress
+            } else if let nextEp = media.nextAiringEpisode, nextEp.episode > 1 {
+                episode = nextEp.episode - 1
+            } else {
+                discussionUrl = nil
+                return
+            }
+            discussionUrl = await RedditDiscussion.findUrl(
+                anilistId: media.id,
+                episode: episode,
+                airingAt: Int(Date().timeIntervalSince1970)
+            )
+        }
         .sheet(isPresented: $showCandidateSheet) { candidateSheet }
         .sheet(isPresented: $showOverrideSheet) { overrideSheet }
         .fullScreenCover(item: $safariDestination) { dest in

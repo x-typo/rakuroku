@@ -316,6 +316,7 @@ struct ProfileView: View {
             user = userData
             loading = false
             activities = (try? await AniListClient.shared.fetchUserActivities(userId: userData.id)) ?? []
+        } catch where error.isCancellation {
         } catch {
             self.error = error.localizedDescription
             loading = false
