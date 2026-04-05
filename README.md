@@ -1,10 +1,10 @@
 # Rakuroku
 
-A personal anime and manga tracking app built with React Native and Expo, integrating with the AniList API.
+A personal anime and manga tracking app built with SwiftUI, integrating with the AniList API.
 
 ## About
 
-Rakuroku was developed as both a personal utility for tracking anime/manga consumption and a learning project to explore modern mobile development practices. The app demonstrates real-world implementation of OAuth authentication, GraphQL API integration, and React Native best practices.
+Rakuroku was developed as both a personal utility for tracking anime/manga consumption and a learning project to explore native iOS development with SwiftUI. The app demonstrates real-world implementation of OAuth authentication, GraphQL API integration, and SwiftUI best practices.
 
 ## Features
 
@@ -23,103 +23,44 @@ Rakuroku was developed as both a personal utility for tracking anime/manga consu
 
 | Technology              | Purpose                                 |
 | ----------------------- | --------------------------------------- |
-| **React Native**        | Cross-platform mobile framework         |
-| **Expo (~54.0)**        | Development toolchain and build system  |
-| **TypeScript**          | Type-safe development with strict mode  |
+| **Swift**               | Language                                |
+| **SwiftUI**             | UI framework                            |
 | **AniList GraphQL API** | Data source for anime/manga information |
-| **expo-auth-session**   | OAuth 2.0 implicit flow authentication  |
-| **expo-secure-store**   | Secure token storage                    |
-| **React Navigation**    | Tab and stack navigation                |
-| **Jest (jest-expo)**    | Unit tests                              |
-| **ESLint**              | Linting                                 |
-
-## Learning Outcomes
-
-This project provided hands-on experience with:
-
-- **GraphQL** - Writing queries and mutations for a production API
-- **OAuth 2.0** - Implementing implicit flow for mobile apps without a backend
-- **React Native Patterns** - FlatList optimization, custom hooks, context providers
-- **TypeScript** - Strict typing for API responses and component props
-- **State Management** - Local state with hooks, optimistic UI updates
-- **Mobile UX** - Gesture navigation, pull-to-refresh, modal interactions
+| **Keychain Services**   | Secure token storage                    |
 
 ## Project Structure
 
 ```
-src/
-  api/           # AniList GraphQL queries and mutations
-  components/    # Reusable UI components
-  constants/     # Colors, filter options
-  context/       # Authentication context provider
-  providers/     # External watch providers (AnimeKai)
-  hooks/         # Custom hooks (useMediaList)
-  screens/       # Screen components
-  types/         # TypeScript type definitions
+Rakuroku/Rakuroku/
+  Constants/     # Theme, colors
+  Models/        # AniList data models, GraphQL payloads
+  Services/      # API client, auth, AnimeKai resolver, Reddit discussions
+  Utilities/     # Formatters, error helpers
+  Views/         # SwiftUI views (screens + components)
+    Components/  # Reusable UI (MediaCard, SearchBar, FilterSheet, etc.)
+  RakurokuApp.swift  # App entry point
 ```
 
 ## Setup
 
 1. Clone the repository
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Create a `.env` file with your AniList credentials:
-   ```
-   EXPO_PUBLIC_ANILIST_USERNAME=your_username
-   EXPO_PUBLIC_ANILIST_CLIENT_ID=your_client_id
-   ```
-4. Start the development server:
-   ```bash
-   npm start
-   ```
+2. Open `Rakuroku/Rakuroku.xcodeproj` in Xcode
+3. Select your development team under Signing & Capabilities
+4. Build and run on a simulator or device
 
 ### AniList OAuth Configuration
 
 To enable authenticated features (progress updates, score/status changes):
 
 1. Create an API client at [AniList Developer Settings](https://anilist.co/settings/developer)
-2. Set the redirect URL based on your environment:
-   - **Standalone / dev build**: `rakuroku://auth`
-   - **Expo Go**: use the value logged by the app (look for `[Auth] redirectUri=...` in Metro logs)
-3. Add the Client ID to your `.env` file
-4. If OAuth is blocked (or redirect URLs are hard to line up), use **Profile → Paste Access Token**
+2. Set the redirect URL to `rakuroku://auth`
+3. If OAuth is blocked, use **Profile > Paste Access Token**
 
 ### External Watch Provider (AnimeKai)
 
 - The app calculates the next episode to watch from your AniList progress and opens it in your system browser.
-- If the show can’t be resolved automatically, you can pick from candidates, paste an override link, or open AnimeKai home.
+- If the show can't be resolved automatically, you can pick from candidates, paste an override link, or open AnimeKai home.
 - The app does not auto-update AniList progress after playback.
-
-## Scripts
-
-```bash
-npm start        # Start Expo dev server
-npm run web      # Run in a web browser
-npm run ios      # Run on iOS simulator/device
-npm run android  # Run on Android emulator/device
-
-npm run lint      # ESLint
-npm run typecheck # TypeScript (no emit)
-npm test          # Jest
-npm run test:watch # Jest watch mode
-```
-
-## Release Mode (Physical Device)
-
-Build a standalone app that works without Metro at runtime:
-
-```bash
-npx expo run:ios --device "<DEVICE_UDID>" --configuration Release
-```
-
-If `expo run:ios` hangs while installing to a physical device, you can install/launch with Apple tooling:
-
-```bash
-xcrun devicectl device install app --device <DEVICE_UDID> ~/Library/Developer/Xcode/DerivedData/Rakuroku-*/Build/Products/Release-iphoneos/Rakuroku.app
-xcrun devicectl device process launch --device <DEVICE_UDID> com.rakuroku.app
-```
 
 ## Acknowledgments
 
