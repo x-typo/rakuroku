@@ -213,13 +213,19 @@ struct MediaDetailView: View {
         HStack(spacing: 12) {
             Button { showScoreModal = true } label: {
                 let score = userEntry?.score ?? 0
-                Label(score > 0 ? String(format: "%.0f ★", score) : "Rate", systemImage: "star")
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(Theme.textPrimary)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Theme.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                Group {
+                    if score > 0 {
+                        Text(String(format: "%.0f ★", score))
+                    } else {
+                        Label("Rate", systemImage: "star")
+                    }
+                }
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(Theme.textPrimary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(Theme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
 
             Button { showProgressModal = true } label: {
