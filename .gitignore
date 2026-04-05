@@ -1,49 +1,24 @@
-# dependencies
-node_modules/
-
-# Expo
-.expo/
-dist/
-web-build/
-expo-env.d.ts
-
-# Native
-.kotlin/
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
-
-# Metro
-.metro-health-check*
-
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
-
 # macOS
 .DS_Store
-
-# Claude Code
-.claude/
-*.pem
-
-# local env files
-.env
-.env*.local
-
-# typescript
-*.tsbuildinfo
-
-# generated native folders
-/ios
-/android
 
 # Xcode
 *.xcuserstate
 xcuserdata/
 DerivedData/
 *.derivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Claude Code
+.claude/
+
+# Secrets
+*.pem
+*.p12
+*.p8
+*.key
+*.mobileprovision
+.env
+.env*.local
