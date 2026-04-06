@@ -82,7 +82,7 @@ struct WatchSectionView: View {
 
                     Button {
                         if let url = discussionUrl {
-                            UIApplication.shared.open(url)
+                            safariDestination = SafariDestination(url: url)
                         }
                     } label: {
                         HStack(spacing: 4) {
