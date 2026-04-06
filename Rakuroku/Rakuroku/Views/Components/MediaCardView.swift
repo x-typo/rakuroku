@@ -125,6 +125,7 @@ struct MediaCardView: View {
                         .background(Theme.surfaceLight)
                     }
                 }
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .background(Theme.surface)
