@@ -64,14 +64,16 @@ struct MediaListView: View {
             } else if let error {
                 ContentErrorView(message: error) { Task { await loadData() } }
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        ForEach(filteredEntries) { entry in
-                            MediaCardView(entry: entry, type: type)
-                        }
+                List {
+                    ForEach(filteredEntries) { entry in
+                        MediaCardView(entry: entry, type: type)
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     }
-                    .padding(.vertical, 8)
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
                 .refreshable { await loadData() }
             }
         }
