@@ -59,7 +59,8 @@ struct MediaCardView: View {
             // Hidden NavigationLink suppresses List's default disclosure chevron
             // while preserving full-row tap navigation.
             NavigationLink(value: MediaDetailDestination(mediaId: entry.media.id)) {
-                EmptyView()
+                Color.clear
+                    .contentShape(Rectangle())
             }
             .opacity(0)
             .accessibilityHidden(true)
