@@ -62,6 +62,7 @@ struct MediaCardView: View {
                 EmptyView()
             }
             .opacity(0)
+            .accessibilityHidden(true)
 
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
@@ -131,7 +132,7 @@ struct MediaCardView: View {
                 Label("+1", systemImage: "plus.circle.fill")
             }
             .tint(Theme.primary)
-            .disabled(!canIncrement || isUpdating)
+            .disabled(!canIncrement || isUpdating || !authStore.isAuthenticated)
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button {
@@ -140,7 +141,7 @@ struct MediaCardView: View {
                 Label("-1", systemImage: "minus.circle.fill")
             }
             .tint(Theme.error)
-            .disabled(!canDecrement || isUpdating)
+            .disabled(!canDecrement || isUpdating || !authStore.isAuthenticated)
         }
     }
 
