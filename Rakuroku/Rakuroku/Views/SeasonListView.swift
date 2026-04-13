@@ -134,7 +134,9 @@ struct SeasonListView: View {
         let nextPage = currentPage + 1
         do {
             let result = try await AniListClient.shared.fetchSeasonalAnime(season: season, year: year, page: nextPage, perPage: 25)
-            media.append(contentsOf: result.media)
+            let existingIds = Set(media.map(\.id))
+            let newItems = result.media.filter { !existingIds.contains($0.id) }
+            media.append(contentsOf: newItems)
             hasNextPage = result.hasNextPage
             currentPage = nextPage
         } catch {
