@@ -177,6 +177,7 @@ struct MediaCardView: View {
                     progress: newProgress,
                     accessToken: token
                 )
+            } catch where error.isCancellation {
             } catch {
                 localProgress = previousProgress
                 updateError = error.localizedDescription
