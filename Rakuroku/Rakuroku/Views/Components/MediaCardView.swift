@@ -7,6 +7,7 @@ struct MediaCardView: View {
     @Environment(AuthStore.self) private var authStore
     @State private var localProgress: Int
     @State private var isUpdating = false
+    @State private var updateError: String?
 
     init(entry: MediaListEntry, type: MediaType) {
         self.entry = entry
@@ -133,7 +134,7 @@ struct MediaCardView: View {
                 Label("+1", systemImage: "plus.circle.fill")
             }
             .tint(Theme.primary)
-            .disabled(!canIncrement || isUpdating || !authStore.isAuthenticated)
+            .disabled(!canIncrement || isUpdating)
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button {
@@ -142,16 +143,31 @@ struct MediaCardView: View {
                 Label("-1", systemImage: "minus.circle.fill")
             }
             .tint(Theme.error)
-            .disabled(!canDecrement || isUpdating || !authStore.isAuthenticated)
+            .disabled(!canDecrement || isUpdating)
+        }
+        .alert("Update Failed", isPresented: Binding(get: { updateError != nil }, set: { if !$0 { updateError = nil } })) {
+            Button("OK") { updateError = nil }
+        } message: {
+            Text(updateError ?? "")
         }
     }
 
     private func handleProgressChange(delta: Int) {
         guard !isUpdating else { return }
-        guard let token = authStore.accessToken else { return }
+        guard let token = authStore.accessToken else {
+            updateError = "Sign in to AniList to update progress."
+            return
+        }
         let previousProgress = localProgress
-        let newProgress = localProgress + delta
+        let unclampedProgress = localProgress + delta
+        let newProgress = if let total {
+            min(max(unclampedProgress, 0), total)
+        } else {
+            max(unclampedProgress, 0)
+        }
+        guard newProgress != previousProgress else { return }
         isUpdating = true
+        updateError = nil
         localProgress = newProgress
 
         Task { @MainActor in
@@ -161,8 +177,10 @@ struct MediaCardView: View {
                     progress: newProgress,
                     accessToken: token
                 )
+            } catch where error.isCancellation {
             } catch {
                 localProgress = previousProgress
+                updateError = error.localizedDescription
             }
             isUpdating = false
         }
