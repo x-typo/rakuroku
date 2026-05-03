@@ -129,12 +129,25 @@ actor AniListClient {
 
     func fetchUserMediaEntry(mediaId: Int, username: String, accessToken: String? = nil) async throws -> UserMediaEntry? {
         struct Response: Decodable { let MediaList: UserMediaEntry? }
-        let result = try await execute(
-            query: Queries.userMediaStatus,
-            variables: ["userName": AnyCodable(username), "mediaId": AnyCodable(mediaId)],
-            accessToken: accessToken,
-            as: Response.self
-        )
+        let result: Response
+        do {
+            result = try await execute(
+                query: Queries.userMediaStatus,
+                variables: ["userName": AnyCodable(username), "mediaId": AnyCodable(mediaId)],
+                accessToken: accessToken,
+                as: Response.self
+            )
+        } catch let error as AniListError {
+            if accessToken != nil, error.isAuthenticationFailure {
+                result = try await execute(
+                    query: Queries.userMediaStatus,
+                    variables: ["userName": AnyCodable(username), "mediaId": AnyCodable(mediaId)],
+                    as: Response.self
+                )
+            } else {
+                throw error
+            }
+        }
         return result.MediaList
     }
 

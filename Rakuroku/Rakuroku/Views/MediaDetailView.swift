@@ -7,6 +7,7 @@ struct MediaDetailView: View {
 
     @State private var media: MediaDetails?
     @State private var userEntry: UserMediaEntry?
+    @State private var entryLookupFailed = false
     @State private var loading = true
     @State private var error: String?
 
@@ -45,7 +46,7 @@ struct MediaDetailView: View {
         let title = media.title.display
         let studio = Formatters.mainStudio(media.studios)
         let userStatus = userEntry?.status
-        let canEditScore = authStore.isAuthenticated && userEntry != nil
+        let canEditScore = authStore.isAuthenticated && userEntry != nil && !entryLookupFailed
 
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
@@ -78,7 +79,7 @@ struct MediaDetailView: View {
                             .foregroundStyle(Theme.textPrimary)
                             .lineLimit(3)
 
-                        if authStore.isAuthenticated, userEntry == nil {
+                        if authStore.isAuthenticated, userEntry == nil, !entryLookupFailed {
                             Button("Add") { showStatusModal = true }
                                 .font(.callout.weight(.semibold))
                                 .foregroundStyle(Theme.textPrimary)
@@ -159,7 +160,7 @@ struct MediaDetailView: View {
         .sheet(isPresented: $showScoreModal) { scoreSheet }
         .sheet(isPresented: $showStatusModal) { statusSheet(media) }
         .sheet(isPresented: $showProgressModal) { progressSheet(media) }
-        .alert("Update Failed", isPresented: Binding(get: { mutationError != nil }, set: { if !$0 { mutationError = nil } })) {
+        .alert("AniList Error", isPresented: Binding(get: { mutationError != nil }, set: { if !$0 { mutationError = nil } })) {
             Button("OK") { mutationError = nil }
         } message: {
             Text(mutationError ?? "")
@@ -506,11 +507,20 @@ struct MediaDetailView: View {
         do {
             let details = try await AniListClient.shared.fetchMediaDetails(id: mediaId)
             media = details
-            userEntry = try await AniListClient.shared.fetchUserMediaEntry(
-                mediaId: mediaId,
-                username: authStore.username,
-                accessToken: authStore.accessToken
-            )
+            entryLookupFailed = false
+            do {
+                userEntry = try await AniListClient.shared.fetchUserMediaEntry(
+                    mediaId: mediaId,
+                    username: authStore.username,
+                    accessToken: authStore.accessToken
+                )
+            } catch where error.isCancellation {
+                throw error
+            } catch {
+                userEntry = nil
+                entryLookupFailed = true
+                mutationError = error.localizedDescription
+            }
         } catch where error.isCancellation {
         } catch {
             self.error = error.localizedDescription
