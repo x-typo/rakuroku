@@ -101,7 +101,7 @@ struct StudioView: View {
         error = nil
         do {
             async let studioData = AniListClient.shared.fetchStudioDetails(studioId: studioId)
-            async let animeList = AniListClient.shared.fetchMediaList(type: .anime, username: authStore.username)
+            async let animeList = AniListClient.shared.fetchMediaList(type: .anime, username: authStore.username, accessToken: authStore.accessToken)
             let (s, list) = try await (studioData, animeList)
             media = s
             userStatusMap = Dictionary(uniqueKeysWithValues: list.map { ($0.media.id, $0.status) })

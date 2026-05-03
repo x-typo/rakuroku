@@ -12,6 +12,7 @@ struct GraphQLResponse<T: Decodable>: Decodable {
 
 struct GraphQLError: Decodable, Sendable {
     let message: String
+    let status: Int?
 }
 
 // Type-erased Codable for GraphQL variables

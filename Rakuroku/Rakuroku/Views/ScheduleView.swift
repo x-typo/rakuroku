@@ -120,7 +120,7 @@ struct ScheduleView: View {
         error = nil
         do {
             async let scheduleData = AniListClient.shared.fetchAiringSchedule(dayIndex: selectedDay)
-            async let animeList = AniListClient.shared.fetchMediaList(type: .anime, username: authStore.username)
+            async let animeList = AniListClient.shared.fetchMediaList(type: .anime, username: authStore.username, accessToken: authStore.accessToken)
             let (s, list) = try await (scheduleData, animeList)
             schedules = s
             userStatusMap = Dictionary(uniqueKeysWithValues: list.map { ($0.media.id, $0.status) })

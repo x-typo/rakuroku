@@ -506,7 +506,11 @@ struct MediaDetailView: View {
         do {
             let details = try await AniListClient.shared.fetchMediaDetails(id: mediaId)
             media = details
-            userEntry = try? await AniListClient.shared.fetchUserMediaEntry(mediaId: mediaId, username: authStore.username)
+            userEntry = try await AniListClient.shared.fetchUserMediaEntry(
+                mediaId: mediaId,
+                username: authStore.username,
+                accessToken: authStore.accessToken
+            )
         } catch where error.isCancellation {
         } catch {
             self.error = error.localizedDescription
@@ -532,12 +536,7 @@ struct MediaDetailView: View {
         updatingStatus = true
         do {
             try await AniListClient.shared.updateStatus(mediaId: mediaId, status: status, accessToken: token)
-            var newScore = entry.score
-            if status == .dropped {
-                try await AniListClient.shared.updateScore(mediaId: mediaId, score: 1, accessToken: token)
-                newScore = 1
-            }
-            userEntry = UserMediaEntry(id: entry.id, status: status, score: newScore, progress: entry.progress)
+            userEntry = UserMediaEntry(id: entry.id, status: status, score: entry.score, progress: entry.progress)
             showStatusModal = false
         } catch {
             mutationError = error.localizedDescription
@@ -587,4 +586,3 @@ struct MediaDetailView: View {
         updatingProgress = false
     }
 }
-

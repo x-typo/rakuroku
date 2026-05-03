@@ -264,11 +264,18 @@ struct ProfileView: View {
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
 
+            if let authError = authStore.authError {
+                Text(authError)
+                    .font(.caption)
+                    .foregroundStyle(Theme.error)
+            }
+
             HStack(spacing: 12) {
                 Button("Save") {
-                    authStore.setManualToken(manualTokenValue)
-                    showManualTokenSheet = false
-                    manualTokenValue = ""
+                    if authStore.setManualToken(manualTokenValue) {
+                        showManualTokenSheet = false
+                        manualTokenValue = ""
+                    }
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(Theme.primary)
