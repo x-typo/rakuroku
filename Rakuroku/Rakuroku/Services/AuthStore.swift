@@ -1,5 +1,7 @@
 import AuthenticationServices
+import Foundation
 import Observation
+import Security
 import SwiftUI
 
 @MainActor @Observable
@@ -15,7 +17,9 @@ final class AuthStore {
     private let usernameKey = "anilist_username"
     private let defaultUsername = ProcessInfo.processInfo.environment["ANILIST_USERNAME"] ?? "xtypo"
     private let clientId = "33626"
-    private var authSession: ASWebAuthenticationSession? // Must retain for duration of auth flow
+    private let callbackScheme = "rakuroku"
+    private let callbackHost = "auth"
+    private var authSession: ASWebAuthenticationSession?
 
     init() {
         accessToken = KeychainHelper.loadString(key: tokenKey)
@@ -36,19 +40,24 @@ final class AuthStore {
 
         authError = nil
 
-        let urlString = "https://anilist.co/api/v2/oauth/authorize"
-            + "?client_id=\(clientId)"
-            + "&response_type=token"
+        let state = makeOAuthState()
+        var components = URLComponents(string: "https://anilist.co/api/v2/oauth/authorize")
+        components?.queryItems = [
+            URLQueryItem(name: "client_id", value: clientId),
+            URLQueryItem(name: "response_type", value: "token"),
+            URLQueryItem(name: "redirect_uri", value: "\(callbackScheme)://\(callbackHost)"),
+            URLQueryItem(name: "state", value: state),
+        ]
 
-        guard let authURL = URL(string: urlString) else {
+        guard let authURL = components?.url else {
             authError = "Invalid auth URL."
             return
         }
 
         do {
             let callbackURL = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
-                let session = ASWebAuthenticationSession(url: authURL, callback: .customScheme("rakuroku")) { [weak self] url, error in
-                    self?.authSession = nil // Release after callback
+                let session = ASWebAuthenticationSession(url: authURL, callback: .customScheme(callbackScheme)) { [weak self] url, error in
+                    self?.authSession = nil
                     if let error {
                         continuation.resume(throwing: error)
                     } else if let url {
@@ -59,22 +68,30 @@ final class AuthStore {
                 }
                 session.prefersEphemeralWebBrowserSession = false
                 session.presentationContextProvider = ASWebAuthContextProvider.shared
-                self.authSession = session // Retain session for auth flow duration
+                self.authSession = session
                 if !session.start() {
                     self.authSession = nil
                     continuation.resume(throwing: AniListError.graphQLError("Unable to start auth session"))
                 }
             }
 
-            // Parse token from fragment: #access_token=xxx&token_type=Bearer&expires_in=xxx
+            guard callbackURL.scheme == callbackScheme, callbackURL.host == callbackHost else {
+                authError = "Invalid auth callback."
+                return
+            }
+
             guard let fragment = callbackURL.fragment else {
                 authError = "No token in callback."
                 return
             }
 
-            let params = fragment.split(separator: "&").reduce(into: [String: String]()) { dict, pair in
-                let parts = pair.split(separator: "=", maxSplits: 1)
-                if parts.count == 2 { dict[String(parts[0])] = String(parts[1]).removingPercentEncoding ?? String(parts[1]) }
+            let params = URLComponents(string: "?\(fragment)")?.queryItems?.reduce(into: [String: String]()) { dict, item in
+                dict[item.name] = item.value ?? ""
+            } ?? [:]
+
+            guard params["state"] == state else {
+                authError = "Invalid auth state."
+                return
             }
 
             guard let token = params["access_token"], !token.isEmpty else {
@@ -82,8 +99,7 @@ final class AuthStore {
                 return
             }
 
-            KeychainHelper.saveString(key: tokenKey, value: token)
-            accessToken = token
+            guard persistAccessToken(token) else { return }
 
         } catch {
             if (error as NSError).code == ASWebAuthenticationSessionError.canceledLogin.rawValue {
@@ -94,30 +110,47 @@ final class AuthStore {
         }
     }
 
-    func logout() {
+    func logout(authError message: String? = nil) {
         KeychainHelper.delete(key: tokenKey)
         accessToken = nil
         username = defaultUsername
+        authError = message
         UserDefaults.standard.removeObject(forKey: usernameKey)
     }
 
-    func setManualToken(_ token: String) {
+    @discardableResult
+    func setManualToken(_ token: String) -> Bool {
         let normalized = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else {
             authError = "Token cannot be empty."
-            return
+            return false
         }
-        KeychainHelper.saveString(key: tokenKey, value: normalized)
-        accessToken = normalized
-        authError = nil
+        return persistAccessToken(normalized)
     }
 
     func clearAuthError() {
         authError = nil
     }
+
+    private func persistAccessToken(_ token: String) -> Bool {
+        guard KeychainHelper.saveString(key: tokenKey, value: token) else {
+            authError = "Couldn't save token securely."
+            return false
+        }
+        accessToken = token
+        authError = nil
+        return true
+    }
+
+    private func makeOAuthState() -> String {
+        var bytes = [UInt8](repeating: 0, count: 16)
+        if SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess {
+            return bytes.map { String(format: "%02x", $0) }.joined()
+        }
+        return UUID().uuidString
+    }
 }
 
-// Presentation context for ASWebAuthenticationSession
 @MainActor
 final class ASWebAuthContextProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
     static let shared = ASWebAuthContextProvider()

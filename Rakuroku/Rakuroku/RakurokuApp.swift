@@ -70,8 +70,9 @@ struct ContentView: View {
                 do {
                     let user = try await AniListClient.shared.fetchAuthenticatedUser(accessToken: token)
                     authStore.updateUsername(user.name)
-                } catch {
+                } catch let error as AniListError where error.isAuthenticationFailure {
                     authStore.logout()
+                } catch {
                 }
             }
             ready = true

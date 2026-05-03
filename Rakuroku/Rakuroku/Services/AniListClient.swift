@@ -14,6 +14,13 @@ enum AniListError: LocalizedError {
         case .networkError(let err): err.localizedDescription
         }
     }
+
+    var isAuthenticationFailure: Bool {
+        if case .apiError(let code) = self {
+            return code == 401 || code == 403
+        }
+        return false
+    }
 }
 
 actor AniListClient {
@@ -61,6 +68,10 @@ actor AniListClient {
         let gqlResponse = try decoder.decode(GraphQLResponse<T>.self, from: data)
 
         if let errors = gqlResponse.errors, let first = errors.first {
+            if let status = first.status {
+                if status == 429 { throw AniListError.rateLimited }
+                if status == 401 || status == 403 { throw AniListError.apiError(status) }
+            }
             throw AniListError.graphQLError(first.message)
         }
 
@@ -90,7 +101,7 @@ actor AniListClient {
             )
         } catch let error as AniListError {
             // Fall back to public query on auth errors
-            if accessToken != nil, case .apiError(let code) = error, [401, 403, 500].contains(code) {
+            if accessToken != nil, error.isAuthenticationFailure {
                 result = try await execute(
                     query: Queries.mediaList,
                     variables: ["userName": AnyCodable(username), "type": AnyCodable(type.rawValue)],
@@ -116,18 +127,28 @@ actor AniListClient {
         return result.Media
     }
 
-    func fetchUserMediaEntry(mediaId: Int, username: String) async throws -> UserMediaEntry? {
+    func fetchUserMediaEntry(mediaId: Int, username: String, accessToken: String? = nil) async throws -> UserMediaEntry? {
         struct Response: Decodable { let MediaList: UserMediaEntry? }
+        let result: Response
         do {
-            let result = try await execute(
+            result = try await execute(
                 query: Queries.userMediaStatus,
                 variables: ["userName": AnyCodable(username), "mediaId": AnyCodable(mediaId)],
+                accessToken: accessToken,
                 as: Response.self
             )
-            return result.MediaList
-        } catch {
-            return nil
+        } catch let error as AniListError {
+            if accessToken != nil, error.isAuthenticationFailure {
+                result = try await execute(
+                    query: Queries.userMediaStatus,
+                    variables: ["userName": AnyCodable(username), "mediaId": AnyCodable(mediaId)],
+                    as: Response.self
+                )
+            } else {
+                throw error
+            }
         }
+        return result.MediaList
     }
 
     func fetchAuthenticatedUser(accessToken: String) async throws -> AniListUser {

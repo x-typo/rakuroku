@@ -6,49 +6,8 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		0A3B4CEA9FC19D145BC58FAD /* SearchBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 756C4A56AE80391134EA0A25 /* SearchBarView.swift */; };
-		12A04106B7EC6490C0D503C9 /* AsyncCoverImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3C544B7856DEAED30FFDD7B /* AsyncCoverImage.swift */; };
-		1B5B4CDE994978894A07ED0B /* SeasonListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EE24A2086953E93264C620F /* SeasonListView.swift */; };
-		20574F0B8F2D0180835F6ECE /* MediaCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF41439B9C826354C5101108 /* MediaCardView.swift */; };
-		3F6D48B9AE8D9DC22C4A3B88 /* StudioView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 106D46379C51B7FCCC007084 /* StudioView.swift */; };
-		51184052A4FF3F900E6037F3 /* AuthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E2F450389FD414E6821B462 /* AuthStore.swift */; };
-		556D44C9845CF0841234826F /* AniListClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0924EC8B67BDD08AC74C667 /* AniListClient.swift */; };
-		76564721898608F69AE6968E /* GraphQLPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7CC4B9C9FBEF7E6D267EC36 /* GraphQLPayload.swift */; };
-		79124F5082AC078546A72BBB /* Formatters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96BD4F5FA1F9058E1E1A95A6 /* Formatters.swift */; };
-		799343F4805606F5E4D0332A /* DiscoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2904F38943F27597FBE5FFD /* DiscoverView.swift */; };
-		7BBC4B92865C74FC1B1AADB0 /* ScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FAD471DA457F71FA93136B1 /* ScheduleView.swift */; };
-		7EB1428EA007BE2BFB22719C /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2A94FB680A3476482777508 /* Theme.swift */; };
-		876048F4BD0F5108C205E5C4 /* AniListModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCB040ACA4E5147444E8BF92 /* AniListModels.swift */; };
-		98C94016B85CB6E512AAF900 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = F488464E94C430DBB8923B01 /* KeychainHelper.swift */; };
-		9B8C4D5FA2A5A0C8FDE72E2F /* MangaListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA4D4D918FA5F7F96E04EE7F /* MangaListView.swift */; };
-		C7E7475DA86F17558E0DC72E /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F844E858E94D6E9C99D171E /* ProfileView.swift */; };
-		D8734769B9AA9FFCFF82DB9A /* MediaDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92A54658A77C615F40552AF4 /* MediaDetailView.swift */; };
-		EEAD44E89A3FB83487C9317B /* AnimeListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 059C4B16BD0A9FBE9ED3EFEF /* AnimeListView.swift */; };
-		F63E4CFF955B78F155515D0F /* FilterSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19B048CEBB8C51756F5DE799 /* FilterSheet.swift */; };
-/* End PBXBuildFile section */
-
 /* Begin PBXFileReference section */
-		059C4B16BD0A9FBE9ED3EFEF /* AnimeListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AnimeListView.swift; path = Rakuroku/Views/AnimeListView.swift; sourceTree = SOURCE_ROOT; };
-		0FAD471DA457F71FA93136B1 /* ScheduleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ScheduleView.swift; path = Rakuroku/Views/ScheduleView.swift; sourceTree = SOURCE_ROOT; };
-		106D46379C51B7FCCC007084 /* StudioView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StudioView.swift; path = Rakuroku/Views/StudioView.swift; sourceTree = SOURCE_ROOT; };
-		19B048CEBB8C51756F5DE799 /* FilterSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FilterSheet.swift; path = Rakuroku/Views/Components/FilterSheet.swift; sourceTree = SOURCE_ROOT; };
-		1E2F450389FD414E6821B462 /* AuthStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AuthStore.swift; path = Rakuroku/Services/AuthStore.swift; sourceTree = SOURCE_ROOT; };
-		4EE24A2086953E93264C620F /* SeasonListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SeasonListView.swift; path = Rakuroku/Views/SeasonListView.swift; sourceTree = SOURCE_ROOT; };
 		584BA7AD2F78F865007852D6 /* Rakuroku.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Rakuroku.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		756C4A56AE80391134EA0A25 /* SearchBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SearchBarView.swift; path = Rakuroku/Views/Components/SearchBarView.swift; sourceTree = SOURCE_ROOT; };
-		7F844E858E94D6E9C99D171E /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ProfileView.swift; path = Rakuroku/Views/ProfileView.swift; sourceTree = SOURCE_ROOT; };
-		92A54658A77C615F40552AF4 /* MediaDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MediaDetailView.swift; path = Rakuroku/Views/MediaDetailView.swift; sourceTree = SOURCE_ROOT; };
-		96BD4F5FA1F9058E1E1A95A6 /* Formatters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Formatters.swift; path = Rakuroku/Utilities/Formatters.swift; sourceTree = SOURCE_ROOT; };
-		BCB040ACA4E5147444E8BF92 /* AniListModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AniListModels.swift; path = Rakuroku/Models/AniListModels.swift; sourceTree = SOURCE_ROOT; };
-		C0924EC8B67BDD08AC74C667 /* AniListClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AniListClient.swift; path = Rakuroku/Services/AniListClient.swift; sourceTree = SOURCE_ROOT; };
-		C2904F38943F27597FBE5FFD /* DiscoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DiscoverView.swift; path = Rakuroku/Views/DiscoverView.swift; sourceTree = SOURCE_ROOT; };
-		D2A94FB680A3476482777508 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Theme.swift; path = Rakuroku/Constants/Theme.swift; sourceTree = SOURCE_ROOT; };
-		D3C544B7856DEAED30FFDD7B /* AsyncCoverImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AsyncCoverImage.swift; path = Rakuroku/Views/Components/AsyncCoverImage.swift; sourceTree = SOURCE_ROOT; };
-		D7CC4B9C9FBEF7E6D267EC36 /* GraphQLPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GraphQLPayload.swift; path = Rakuroku/Models/GraphQLPayload.swift; sourceTree = SOURCE_ROOT; };
-		DA4D4D918FA5F7F96E04EE7F /* MangaListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MangaListView.swift; path = Rakuroku/Views/MangaListView.swift; sourceTree = SOURCE_ROOT; };
-		DF41439B9C826354C5101108 /* MediaCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MediaCardView.swift; path = Rakuroku/Views/Components/MediaCardView.swift; sourceTree = SOURCE_ROOT; };
-		F488464E94C430DBB8923B01 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KeychainHelper.swift; path = Rakuroku/Services/KeychainHelper.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -75,25 +34,6 @@
 			children = (
 				584BA7AF2F78F865007852D6 /* Rakuroku */,
 				584BA7AE2F78F865007852D6 /* Products */,
-				D2A94FB680A3476482777508 /* Theme.swift */,
-				BCB040ACA4E5147444E8BF92 /* AniListModels.swift */,
-				D7CC4B9C9FBEF7E6D267EC36 /* GraphQLPayload.swift */,
-				96BD4F5FA1F9058E1E1A95A6 /* Formatters.swift */,
-				C0924EC8B67BDD08AC74C667 /* AniListClient.swift */,
-				1E2F450389FD414E6821B462 /* AuthStore.swift */,
-				F488464E94C430DBB8923B01 /* KeychainHelper.swift */,
-				059C4B16BD0A9FBE9ED3EFEF /* AnimeListView.swift */,
-				DA4D4D918FA5F7F96E04EE7F /* MangaListView.swift */,
-				0FAD471DA457F71FA93136B1 /* ScheduleView.swift */,
-				C2904F38943F27597FBE5FFD /* DiscoverView.swift */,
-				7F844E858E94D6E9C99D171E /* ProfileView.swift */,
-				92A54658A77C615F40552AF4 /* MediaDetailView.swift */,
-				106D46379C51B7FCCC007084 /* StudioView.swift */,
-				4EE24A2086953E93264C620F /* SeasonListView.swift */,
-				D3C544B7856DEAED30FFDD7B /* AsyncCoverImage.swift */,
-				756C4A56AE80391134EA0A25 /* SearchBarView.swift */,
-				19B048CEBB8C51756F5DE799 /* FilterSheet.swift */,
-				DF41439B9C826354C5101108 /* MediaCardView.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -179,25 +119,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				7EB1428EA007BE2BFB22719C /* Theme.swift in Sources */,
-				876048F4BD0F5108C205E5C4 /* AniListModels.swift in Sources */,
-				76564721898608F69AE6968E /* GraphQLPayload.swift in Sources */,
-				79124F5082AC078546A72BBB /* Formatters.swift in Sources */,
-				556D44C9845CF0841234826F /* AniListClient.swift in Sources */,
-				51184052A4FF3F900E6037F3 /* AuthStore.swift in Sources */,
-				98C94016B85CB6E512AAF900 /* KeychainHelper.swift in Sources */,
-				EEAD44E89A3FB83487C9317B /* AnimeListView.swift in Sources */,
-				9B8C4D5FA2A5A0C8FDE72E2F /* MangaListView.swift in Sources */,
-				7BBC4B92865C74FC1B1AADB0 /* ScheduleView.swift in Sources */,
-				799343F4805606F5E4D0332A /* DiscoverView.swift in Sources */,
-				C7E7475DA86F17558E0DC72E /* ProfileView.swift in Sources */,
-				D8734769B9AA9FFCFF82DB9A /* MediaDetailView.swift in Sources */,
-				3F6D48B9AE8D9DC22C4A3B88 /* StudioView.swift in Sources */,
-				1B5B4CDE994978894A07ED0B /* SeasonListView.swift in Sources */,
-				12A04106B7EC6490C0D503C9 /* AsyncCoverImage.swift in Sources */,
-				0A3B4CEA9FC19D145BC58FAD /* SearchBarView.swift in Sources */,
-				F63E4CFF955B78F155515D0F /* FilterSheet.swift in Sources */,
-				20574F0B8F2D0180835F6ECE /* MediaCardView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -334,12 +255,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = K83R42K74H;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -366,12 +283,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = K83R42K74H;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

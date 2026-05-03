@@ -116,7 +116,7 @@ struct SeasonListView: View {
         currentPage = 1
         do {
             async let seasonData = AniListClient.shared.fetchSeasonalAnime(season: season, year: year, page: 1, perPage: 25)
-            async let animeList = AniListClient.shared.fetchMediaList(type: .anime, username: authStore.username)
+            async let animeList = AniListClient.shared.fetchMediaList(type: .anime, username: authStore.username, accessToken: authStore.accessToken)
             let (s, list) = try await (seasonData, animeList)
             media = s.media
             hasNextPage = s.hasNextPage
