@@ -73,7 +73,7 @@ struct ProfileView: View {
             }
 
             Button {
-                showManualTokenSheet = true
+                openManualTokenSheet()
             } label: {
                 Label("Paste Access Token", systemImage: "key")
                     .font(.callout.weight(.semibold))
@@ -175,7 +175,7 @@ struct ProfileView: View {
                 }
 
                 Button {
-                    showManualTokenSheet = true
+                    openManualTokenSheet()
                 } label: {
                     Label("Paste Access Token", systemImage: "key")
                         .font(.callout.weight(.semibold))
@@ -323,10 +323,22 @@ struct ProfileView: View {
             user = userData
             loading = false
             activities = (try? await AniListClient.shared.fetchUserActivities(userId: userData.id)) ?? []
+        } catch let error as AniListError where error.isAuthenticationFailure {
+            user = nil
+            activities = []
+            self.error = nil
+            loading = false
+            authStore.logout(authError: "AniList session expired. Sign in again.")
         } catch where error.isCancellation {
         } catch {
             self.error = error.localizedDescription
             loading = false
         }
+    }
+
+    private func openManualTokenSheet() {
+        authStore.clearAuthError()
+        manualTokenValue = ""
+        showManualTokenSheet = true
     }
 }

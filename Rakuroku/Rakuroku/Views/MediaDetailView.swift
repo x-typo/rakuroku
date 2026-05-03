@@ -113,7 +113,7 @@ struct MediaDetailView: View {
                 statsRow(media)
 
                 if media.type == .anime {
-                    WatchSectionView(media: media, userEntry: userEntry)
+                    WatchSectionView(media: media, userEntry: userEntry, entryLookupFailed: entryLookupFailed)
                 }
 
                 if canEditScore {

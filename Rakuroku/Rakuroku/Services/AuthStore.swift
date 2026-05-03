@@ -110,10 +110,11 @@ final class AuthStore {
         }
     }
 
-    func logout() {
+    func logout(authError message: String? = nil) {
         KeychainHelper.delete(key: tokenKey)
         accessToken = nil
         username = defaultUsername
+        authError = message
         UserDefaults.standard.removeObject(forKey: usernameKey)
     }
 

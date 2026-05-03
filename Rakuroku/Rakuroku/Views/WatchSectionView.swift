@@ -9,6 +9,7 @@ struct SafariDestination: Identifiable {
 struct WatchSectionView: View {
     let media: MediaDetails
     let userEntry: UserMediaEntry?
+    let entryLookupFailed: Bool
 
     @Environment(AuthStore.self) private var authStore
     @Environment(AnimeKaiStore.self) private var animeKaiStore
@@ -26,7 +27,7 @@ struct WatchSectionView: View {
     private var currentProgress: Int { userEntry?.progress ?? 0 }
     private var nextEp: Int { currentProgress + 1 }
     private var allWatched: Bool { media.episodes.map { currentProgress >= $0 } ?? false }
-    private var canWatch: Bool { authStore.isAuthenticated && userEntry != nil && !allWatched }
+    private var canWatch: Bool { authStore.isAuthenticated && userEntry != nil && !entryLookupFailed && !allWatched }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -116,6 +117,10 @@ struct WatchSectionView: View {
                 }
             } else if allWatched {
                 Text("All episodes watched.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.textSecondary)
+            } else if entryLookupFailed {
+                Text("Couldn't load your list status. Try refreshing.")
                     .font(.caption)
                     .foregroundStyle(Theme.textSecondary)
             } else if !authStore.isAuthenticated || userEntry == nil {
