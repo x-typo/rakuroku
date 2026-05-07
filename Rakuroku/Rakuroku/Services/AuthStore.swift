@@ -54,6 +54,11 @@ final class AuthStore {
             return
         }
 
+        guard ASWebAuthContextProvider.shared.hasPresentationAnchor else {
+            authError = "No active window available for AniList login."
+            return
+        }
+
         do {
             let callbackURL = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
                 let session = ASWebAuthenticationSession(url: authURL, callback: .customScheme(callbackScheme)) { [weak self] url, error in
@@ -155,14 +160,35 @@ final class AuthStore {
 final class ASWebAuthContextProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
     static let shared = ASWebAuthContextProvider()
 
+    private var fallbackAnchor: ASPresentationAnchor?
+
+    var hasPresentationAnchor: Bool {
+        resolvePresentationAnchor() != nil
+    }
+
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let window = scene.windows.first else {
-            guard let fallbackScene = UIApplication.shared.connectedScenes.first as? UIWindowScene else {
-                preconditionFailure("A window scene is required for AniList authentication.")
-            }
-            return ASPresentationAnchor(windowScene: fallbackScene)
+        guard let anchor = resolvePresentationAnchor() else {
+            preconditionFailure("A window scene is required for AniList authentication.")
         }
-        return window
+        return anchor
+    }
+
+    private func resolvePresentationAnchor() -> ASPresentationAnchor? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let scene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+
+        if let window = scene?.windows.first(where: { $0.isKeyWindow })
+            ?? scene?.windows.first(where: { !$0.isHidden })
+            ?? scene?.windows.first {
+            return window
+        }
+
+        if let scene {
+            let anchor = fallbackAnchor ?? ASPresentationAnchor(windowScene: scene)
+            fallbackAnchor = anchor
+            return anchor
+        }
+
+        return fallbackAnchor
     }
 }

@@ -81,7 +81,9 @@ actor AniListClient {
         if let errors = gqlResponse.errors, let first = errors.first {
             if let status = first.status {
                 if status == 429 { throw AniListError.rateLimited }
-                if status == 401 || status == 403 { throw AniListError.apiError(status) }
+                if status == 401 || status == 403 || status == 404 {
+                    throw AniListError.apiError(status)
+                }
             }
             throw AniListError.graphQLError(first.message)
         }
