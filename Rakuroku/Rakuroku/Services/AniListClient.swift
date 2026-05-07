@@ -25,11 +25,14 @@ enum AniListError: LocalizedError {
     var isNotFound: Bool {
         switch self {
         case .apiError(let code):
-            code == 404
+            return code == 404
         case .graphQLError(let message):
-            message.localizedCaseInsensitiveContains("not found")
+            let normalizedMessage = message
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            return normalizedMessage.caseInsensitiveCompare("not found") == .orderedSame
         default:
-            false
+            return false
         }
     }
 }
