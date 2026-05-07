@@ -158,7 +158,10 @@ final class ASWebAuthContextProvider: NSObject, ASWebAuthenticationPresentationC
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let window = scene.windows.first else {
-            return ASPresentationAnchor()
+            guard let fallbackScene = UIApplication.shared.connectedScenes.first as? UIWindowScene else {
+                preconditionFailure("A window scene is required for AniList authentication.")
+            }
+            return ASPresentationAnchor(windowScene: fallbackScene)
         }
         return window
     }

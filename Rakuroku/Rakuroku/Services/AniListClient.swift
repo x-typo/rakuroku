@@ -21,6 +21,17 @@ enum AniListError: LocalizedError {
         }
         return false
     }
+
+    var isNotFound: Bool {
+        switch self {
+        case .apiError(let code):
+            code == 404
+        case .graphQLError(let message):
+            message.localizedCaseInsensitiveContains("not found")
+        default:
+            false
+        }
+    }
 }
 
 actor AniListClient {
@@ -129,6 +140,8 @@ actor AniListClient {
 
     func fetchUserMediaEntry(mediaId: Int, username: String, accessToken: String? = nil) async throws -> UserMediaEntry? {
         struct Response: Decodable { let MediaList: UserMediaEntry? }
+        guard !username.isEmpty else { return nil }
+
         let result: Response
         do {
             result = try await execute(
@@ -138,12 +151,18 @@ actor AniListClient {
                 as: Response.self
             )
         } catch let error as AniListError {
-            if accessToken != nil, error.isAuthenticationFailure {
-                result = try await execute(
-                    query: Queries.userMediaStatus,
-                    variables: ["userName": AnyCodable(username), "mediaId": AnyCodable(mediaId)],
-                    as: Response.self
-                )
+            if error.isNotFound {
+                return nil
+            } else if accessToken != nil, error.isAuthenticationFailure {
+                do {
+                    result = try await execute(
+                        query: Queries.userMediaStatus,
+                        variables: ["userName": AnyCodable(username), "mediaId": AnyCodable(mediaId)],
+                        as: Response.self
+                    )
+                } catch let fallbackError as AniListError where fallbackError.isNotFound {
+                    return nil
+                }
             } else {
                 throw error
             }
