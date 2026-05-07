@@ -1,22 +1,22 @@
 import Foundation
 
-struct GraphQLRequest: Encodable, Sendable {
+nonisolated struct GraphQLRequest: Encodable, Sendable {
     let query: String
     let variables: [String: AnyCodable]
 }
 
-struct GraphQLResponse<T: Decodable>: Decodable {
+nonisolated struct GraphQLResponse<T: Decodable>: Decodable {
     let data: T?
     let errors: [GraphQLError]?
 }
 
-struct GraphQLError: Decodable, Sendable {
+nonisolated struct GraphQLError: Decodable, Sendable {
     let message: String
     let status: Int?
 }
 
 // Type-erased Codable for GraphQL variables
-struct AnyCodable: Encodable, Sendable {
+nonisolated struct AnyCodable: Encodable, Sendable {
     private let _encode: @Sendable (Encoder) throws -> Void
 
     init(_ value: some Sendable & Encodable) {

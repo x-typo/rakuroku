@@ -20,6 +20,7 @@ final class AuthStore {
     private let callbackScheme = "rakuroku"
     private let callbackHost = "auth"
     private var authSession: ASWebAuthenticationSession?
+    private var authContextProvider: ASWebAuthContextProvider?
 
     init() {
         accessToken = KeychainHelper.loadString(key: tokenKey)
@@ -54,10 +55,17 @@ final class AuthStore {
             return
         }
 
+        guard let presentationAnchor = ASWebAuthContextProvider.currentPresentationAnchor else {
+            authError = "No active window available for AniList login."
+            return
+        }
+        let contextProvider = ASWebAuthContextProvider(anchor: presentationAnchor)
+
         do {
             let callbackURL = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
                 let session = ASWebAuthenticationSession(url: authURL, callback: .customScheme(callbackScheme)) { [weak self] url, error in
                     self?.authSession = nil
+                    self?.authContextProvider = nil
                     if let error {
                         continuation.resume(throwing: error)
                     } else if let url {
@@ -67,10 +75,12 @@ final class AuthStore {
                     }
                 }
                 session.prefersEphemeralWebBrowserSession = false
-                session.presentationContextProvider = ASWebAuthContextProvider.shared
+                session.presentationContextProvider = contextProvider
+                self.authContextProvider = contextProvider
                 self.authSession = session
                 if !session.start() {
                     self.authSession = nil
+                    self.authContextProvider = nil
                     continuation.resume(throwing: AniListError.graphQLError("Unable to start auth session"))
                 }
             }
@@ -153,13 +163,22 @@ final class AuthStore {
 
 @MainActor
 final class ASWebAuthContextProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
-    static let shared = ASWebAuthContextProvider()
+    private let anchor: ASPresentationAnchor
+
+    init(anchor: ASPresentationAnchor) {
+        self.anchor = anchor
+    }
+
+    static var currentPresentationAnchor: ASPresentationAnchor? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let scene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+
+        return scene?.windows.first(where: { $0.isKeyWindow })
+            ?? scene?.windows.first(where: { !$0.isHidden })
+            ?? scene?.windows.first
+    }
 
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let window = scene.windows.first else {
-            return ASPresentationAnchor()
-        }
-        return window
+        anchor
     }
 }
