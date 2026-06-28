@@ -129,23 +129,17 @@ nonisolated enum AnikotoTVResolver {
 
     private static func bestCandidate(for title: String, candidates: [Candidate]) -> Candidate? {
         let scored = candidates
-            .map { candidate in (candidate, score(candidate: candidate, title: title)) }
-            .sorted { lhs, rhs in
-                if lhs.1 == rhs.1 {
-                    return lhs.0.watchPath.count < rhs.0.watchPath.count
-                }
-                return lhs.1 > rhs.1
-            }
+            .map { candidate in (candidate: candidate, score: score(candidate: candidate, title: title)) }
 
-        guard let best = scored.first, best.1 >= 800 else {
+        guard let best = scored.max(by: { $0.score < $1.score }), best.score >= 800 else {
             return nil
         }
 
-        if scored.dropFirst().contains(where: { $0.1 == best.1 }) {
+        if scored.filter({ $0.score == best.score }).count > 1 {
             return nil
         }
 
-        return best.0
+        return best.candidate
     }
 
     private static func score(candidate: Candidate, title: String) -> Int {

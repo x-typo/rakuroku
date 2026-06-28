@@ -13,6 +13,7 @@ enum RedditDiscussion {
         static let searchLimit = "25"
         static let restrictToSubreddit = "1"
         static let sortNewest = "new"
+        static let timeout: TimeInterval = 15
 
         static func aniListNeedle(anilistId: Int) -> String {
             "anilist.co/anime/\(anilistId)"
@@ -44,7 +45,7 @@ enum RedditDiscussion {
             return nil
         }
 
-        var request = URLRequest(url: searchURL)
+        var request = URLRequest(url: searchURL, timeoutInterval: Request.timeout)
         request.setValue(Request.userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue(Request.acceptJSON, forHTTPHeaderField: "Accept")
 
