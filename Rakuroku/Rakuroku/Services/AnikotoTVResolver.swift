@@ -6,6 +6,7 @@ nonisolated enum AnikotoTVResolver {
 
     private static let baseURL = "https://anikototv.to"
     private static let requestUserAgent = "rakuroku/1.0 (anikototv-link-resolver)"
+    private static let requestTimeout: TimeInterval = 15
 
     // MARK: - Types
 
@@ -61,7 +62,7 @@ nonisolated enum AnikotoTVResolver {
 
     // MARK: - Resolution
 
-    static func resolve(anilistId _: Int, title: String) async -> ResolveResult {
+    static func resolve(title: String) async -> ResolveResult {
         guard let searchURL = searchURL(title: title),
               let candidates = await searchCandidates(url: searchURL),
               !candidates.isEmpty else {
@@ -84,7 +85,7 @@ nonisolated enum AnikotoTVResolver {
     }
 
     private static func searchCandidates(url: URL) async -> [Candidate]? {
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: url, timeoutInterval: requestTimeout)
         request.setValue(requestUserAgent, forHTTPHeaderField: "User-Agent")
         request.setValue("text/html", forHTTPHeaderField: "Accept")
 

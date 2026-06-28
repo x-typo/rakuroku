@@ -34,7 +34,7 @@ final class AnikotoTVStore {
             return AnikotoTVResolver.ResolveResult(watchPath: cached, candidates: [])
         }
 
-        let result = await AnikotoTVResolver.resolve(anilistId: mediaId, title: title)
+        let result = await AnikotoTVResolver.resolve(title: title)
 
         if let path = result.watchPath {
             resolvedPaths[key] = path
