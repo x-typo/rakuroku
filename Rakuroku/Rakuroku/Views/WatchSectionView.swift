@@ -28,7 +28,7 @@ struct WatchSectionView: View {
     private var nextEp: Int { currentProgress + 1 }
     private var allWatched: Bool { media.episodes.map { currentProgress >= $0 } ?? false }
     private var canWatch: Bool { authStore.isAuthenticated && userEntry != nil && !entryLookupFailed && !allWatched }
-    private var discussionLookupKey: String { "\(media.id)-\(currentProgress)-\(media.nextAiringEpisode?.episode ?? 0)" }
+    private var discussionLookupKey: String { "\(media.id)-\(canWatch)-\(currentProgress)-\(media.nextAiringEpisode?.episode ?? 0)" }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -140,9 +140,13 @@ struct WatchSectionView: View {
         .padding(.top, 12)
         .task(id: discussionLookupKey) {
             guard canWatch else {
-                discussionUrl = nil
+                if !Task.isCancelled {
+                    discussionUrl = nil
+                }
                 return
             }
+            guard !Task.isCancelled else { return }
+
             let fallbackUrl = RedditDiscussion.searchUrl(anilistId: media.id)
             discussionUrl = fallbackUrl
 
@@ -160,6 +164,7 @@ struct WatchSectionView: View {
                 episode: episode,
                 airingAt: Int(Date().timeIntervalSince1970)
             )
+            guard !Task.isCancelled else { return }
             discussionUrl = exactUrl ?? fallbackUrl
         }
         .sheet(isPresented: $showCandidateSheet) { candidateSheet }
