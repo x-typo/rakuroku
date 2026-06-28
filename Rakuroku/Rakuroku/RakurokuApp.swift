@@ -12,13 +12,13 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 struct RakurokuApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var authStore = AuthStore()
-    @State private var animeKaiStore = AnimeKaiStore()
+    @State private var anikotoTVStore = AnikotoTVStore()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(authStore)
-                .environment(animeKaiStore)
+                .environment(anikotoTVStore)
                 .preferredColorScheme(.dark)
         }
     }

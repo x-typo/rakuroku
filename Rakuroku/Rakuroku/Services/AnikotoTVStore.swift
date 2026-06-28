@@ -2,12 +2,12 @@ import Foundation
 import Observation
 
 @MainActor @Observable
-final class AnimeKaiStore {
+final class AnikotoTVStore {
     private(set) var resolvedPaths: [String: String]
     private(set) var overridePaths: [String: String]
 
-    private let resolvedKey = "animekai_resolved_v1"
-    private let overrideKey = "animekai_overrides_v1"
+    private let resolvedKey = "anikototv_resolved_v1"
+    private let overrideKey = "anikototv_overrides_v1"
 
     init() {
         resolvedPaths = UserDefaults.standard.dictionary(forKey: resolvedKey) as? [String: String] ?? [:]
@@ -23,18 +23,18 @@ final class AnimeKaiStore {
         overridePaths[String(mediaId)] != nil
     }
 
-    func resolve(mediaId: Int, title: String) async -> AnimeKaiResolver.ResolveResult {
+    func resolve(mediaId: Int, title: String) async -> AnikotoTVResolver.ResolveResult {
         let key = String(mediaId)
 
         if let override = overridePaths[key] {
-            return AnimeKaiResolver.ResolveResult(watchPath: override, candidates: [])
+            return AnikotoTVResolver.ResolveResult(watchPath: override, candidates: [])
         }
 
         if let cached = resolvedPaths[key] {
-            return AnimeKaiResolver.ResolveResult(watchPath: cached, candidates: [])
+            return AnikotoTVResolver.ResolveResult(watchPath: cached, candidates: [])
         }
 
-        let result = await AnimeKaiResolver.resolve(anilistId: mediaId, title: title)
+        let result = await AnikotoTVResolver.resolve(title: title)
 
         if let path = result.watchPath {
             resolvedPaths[key] = path
@@ -45,7 +45,7 @@ final class AnimeKaiStore {
     }
 
     func setOverride(mediaId: Int, watchPath: String) {
-        guard let normalized = AnimeKaiResolver.normalizeWatchPathInput(watchPath) else { return }
+        guard let normalized = AnikotoTVResolver.normalizeWatchPathInput(watchPath) else { return }
         overridePaths[String(mediaId)] = normalized
         UserDefaults.standard.set(overridePaths, forKey: overrideKey)
     }

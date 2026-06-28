@@ -12,11 +12,11 @@ struct WatchSectionView: View {
     let entryLookupFailed: Bool
 
     @Environment(AuthStore.self) private var authStore
-    @Environment(AnimeKaiStore.self) private var animeKaiStore
+    @Environment(AnikotoTVStore.self) private var anikotoTVStore
 
     @State private var watchLoading = false
     @State private var watchError: String?
-    @State private var watchCandidates: [AnimeKaiResolver.Candidate] = []
+    @State private var watchCandidates: [AnikotoTVResolver.Candidate] = []
     @State private var showCandidateSheet = false
     @State private var showOverrideSheet = false
     @State private var overrideInput = ""
@@ -28,6 +28,7 @@ struct WatchSectionView: View {
     private var nextEp: Int { currentProgress + 1 }
     private var allWatched: Bool { media.episodes.map { currentProgress >= $0 } ?? false }
     private var canWatch: Bool { authStore.isAuthenticated && userEntry != nil && !entryLookupFailed && !allWatched }
+    private var discussionLookupKey: String { "\(media.id)-\(canWatch)-\(currentProgress)-\(media.nextAiringEpisode?.episode ?? 0)" }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -54,11 +55,11 @@ struct WatchSectionView: View {
 
                 HStack(spacing: 8) {
                     Button {
-                        if let url = URL(string: "https://animekai.to/home") {
+                        if let url = AnikotoTVResolver.homeURL() {
                             safariDestination = SafariDestination(url: url)
                         }
                     } label: {
-                        Text("AnimeKai")
+                        Text(AnikotoTVResolver.providerName)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Theme.textPrimary)
                             .padding(.horizontal, 12)
@@ -68,11 +69,11 @@ struct WatchSectionView: View {
                     }
 
                     Button {
-                        overrideInput = animeKaiStore.getWatchPath(mediaId: media.id) ?? ""
+                        overrideInput = anikotoTVStore.getWatchPath(mediaId: media.id) ?? ""
                         overrideInputError = nil
                         showOverrideSheet = true
                     } label: {
-                        Text(animeKaiStore.hasOverride(mediaId: media.id) ? "Edit Override" : "Override Link")
+                        Text(anikotoTVStore.hasOverride(mediaId: media.id) ? "Edit Override" : "Override Link")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Theme.textPrimary)
                             .padding(.horizontal, 12)
@@ -101,9 +102,9 @@ struct WatchSectionView: View {
                     }
                     .disabled(discussionUrl == nil)
 
-                    if animeKaiStore.hasOverride(mediaId: media.id) {
+                    if anikotoTVStore.hasOverride(mediaId: media.id) {
                         Button {
-                            animeKaiStore.clearOverride(mediaId: media.id)
+                            anikotoTVStore.clearOverride(mediaId: media.id)
                         } label: {
                             Text("Clear")
                                 .font(.caption.weight(.semibold))
@@ -137,25 +138,34 @@ struct WatchSectionView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 12)
-        .task(id: currentProgress) {
+        .task(id: discussionLookupKey) {
             guard canWatch else {
-                discussionUrl = nil
+                if !Task.isCancelled {
+                    discussionUrl = nil
+                }
                 return
             }
+            guard !Task.isCancelled else { return }
+
+            let fallbackUrl = RedditDiscussion.searchUrl(anilistId: media.id)
+            discussionUrl = fallbackUrl
+
             let episode: Int
             if currentProgress > 0 {
                 episode = currentProgress
             } else if let nextEp = media.nextAiringEpisode, nextEp.episode > 1 {
                 episode = nextEp.episode - 1
             } else {
-                discussionUrl = nil
                 return
             }
-            discussionUrl = await RedditDiscussion.findUrl(
+
+            let exactUrl = await RedditDiscussion.findUrl(
                 anilistId: media.id,
                 episode: episode,
                 airingAt: Int(Date().timeIntervalSince1970)
             )
+            guard !Task.isCancelled else { return }
+            discussionUrl = exactUrl ?? fallbackUrl
         }
         .sheet(isPresented: $showCandidateSheet) { candidateSheet }
         .sheet(isPresented: $showOverrideSheet) { overrideSheet }
@@ -179,16 +189,16 @@ struct WatchSectionView: View {
         watchLoading = true
         watchError = nil
 
-        let result = await animeKaiStore.resolve(mediaId: media.id, title: media.title.display)
+        let result = await anikotoTVStore.resolve(mediaId: media.id, title: media.title.display)
 
         if let path = result.watchPath,
-           let url = AnimeKaiResolver.buildEpisodeURL(watchPath: path, episode: nextEp) {
+           let url = AnikotoTVResolver.buildEpisodeURL(watchPath: path, episode: nextEp) {
             safariDestination = SafariDestination(url: url)
         } else if !result.candidates.isEmpty {
             watchCandidates = result.candidates
             showCandidateSheet = true
         } else {
-            watchError = "Couldn't find this show on AnimeKai."
+            watchError = "Couldn't build this \(AnikotoTVResolver.providerName) link."
         }
 
         watchLoading = false
@@ -199,7 +209,7 @@ struct WatchSectionView: View {
     @ViewBuilder
     private var candidateSheet: some View {
         VStack(spacing: 12) {
-            Text("Choose AnimeKai Link")
+            Text("Choose \(AnikotoTVResolver.providerName) Link")
                 .font(.title3.bold())
                 .foregroundStyle(Theme.textPrimary)
                 .padding(.top, 16)
@@ -212,9 +222,9 @@ struct WatchSectionView: View {
                 VStack(spacing: 4) {
                     ForEach(watchCandidates) { candidate in
                         Button {
-                            animeKaiStore.setOverride(mediaId: media.id, watchPath: candidate.watchPath)
+                            anikotoTVStore.setOverride(mediaId: media.id, watchPath: candidate.watchPath)
                             showCandidateSheet = false
-                            if let url = AnimeKaiResolver.buildEpisodeURL(watchPath: candidate.watchPath, episode: nextEp) {
+                            if let url = AnikotoTVResolver.buildEpisodeURL(watchPath: candidate.watchPath, episode: nextEp) {
                                 safariDestination = SafariDestination(url: url)
                             }
                         } label: {
@@ -257,16 +267,16 @@ struct WatchSectionView: View {
     @ViewBuilder
     private var overrideSheet: some View {
         VStack(spacing: 16) {
-            Text("AnimeKai Link Override")
+            Text("\(AnikotoTVResolver.providerName) Link Override")
                 .font(.title3.bold())
                 .foregroundStyle(Theme.textPrimary)
 
-            Text("Paste an AnimeKai URL, /watch path, or slug.")
+            Text("Paste an \(AnikotoTVResolver.providerName) URL, /watch path, or slug.")
                 .font(.caption)
                 .foregroundStyle(Theme.textSecondary)
                 .multilineTextAlignment(.center)
 
-            TextField("https://animekai.to/watch/...", text: $overrideInput)
+            TextField("https://anikototv.to/watch/...", text: $overrideInput)
                 .textFieldStyle(.roundedBorder)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
@@ -279,12 +289,12 @@ struct WatchSectionView: View {
 
             HStack(spacing: 12) {
                 Button("Save") {
-                    if let normalized = AnimeKaiResolver.normalizeWatchPathInput(overrideInput) {
-                        animeKaiStore.setOverride(mediaId: media.id, watchPath: normalized)
+                    if let normalized = AnikotoTVResolver.normalizeWatchPathInput(overrideInput) {
+                        anikotoTVStore.setOverride(mediaId: media.id, watchPath: normalized)
                         showOverrideSheet = false
                         overrideInputError = nil
                     } else {
-                        overrideInputError = "Invalid AnimeKai link."
+                        overrideInputError = "Invalid \(AnikotoTVResolver.providerName) link."
                     }
                 }
                 .buttonStyle(.borderedProminent)
@@ -297,9 +307,9 @@ struct WatchSectionView: View {
                 .buttonStyle(.bordered)
             }
 
-            if animeKaiStore.hasOverride(mediaId: media.id) {
+            if anikotoTVStore.hasOverride(mediaId: media.id) {
                 Button(role: .destructive) {
-                    animeKaiStore.clearOverride(mediaId: media.id)
+                    anikotoTVStore.clearOverride(mediaId: media.id)
                     showOverrideSheet = false
                 } label: {
                     Text("Clear Override")

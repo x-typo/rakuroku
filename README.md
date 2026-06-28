@@ -14,7 +14,7 @@ Rakuroku was developed as both a personal utility for tracking anime/manga consu
 - **Search** - Search the entire AniList database
 - **Media Details** - View comprehensive information including synopsis, relations, rankings, and studio details
 - **Progress Tracking** - Increment episode/chapter progress directly from the app
-- **Watch Next Episode (External)** - Open the next episode in your browser based on your AniList progress (AnimeKai provider with manual override + fallbacks)
+- **Watch Next Episode (External)** - Open the next episode in your browser based on your AniList progress (AnikotoTV provider with manual override + fallbacks)
 - **Score & Status Management** - Update ratings and watch status via intuitive modals
 - **OAuth Authentication** - Secure sign-in with AniList to sync changes to your account
 - **Pull-to-Refresh** - Refresh data across all screens
@@ -34,7 +34,7 @@ Rakuroku was developed as both a personal utility for tracking anime/manga consu
 Rakuroku/Rakuroku/
   Constants/     # Theme, colors
   Models/        # AniList data models, GraphQL payloads
-  Services/      # API client, auth, AnimeKai resolver, Reddit discussions
+  Services/      # API client, auth, external watch resolver, Reddit discussions
   Utilities/     # Formatters, error helpers
   Views/         # SwiftUI views (screens + components)
     Components/  # Reusable UI (MediaCard, SearchBar, FilterSheet, etc.)
@@ -56,10 +56,11 @@ To enable authenticated features (progress updates, score/status changes):
 2. Set the redirect URL to `rakuroku://auth`
 3. If OAuth is blocked, use **Profile > Paste Access Token**
 
-### External Watch Provider (AnimeKai)
+### External Watch Provider (AnikotoTV)
 
 - The app calculates the next episode to watch from your AniList progress and opens it in your system browser.
-- If the show can't be resolved automatically, you can pick from candidates, paste an override link, or open AnimeKai home.
+- The default link resolves the real AnikotoTV watch path by searching for the AniList title, then opens `/watch/show-slug/ep-N`.
+- If multiple matches appear or the resolver cannot find the right entry, pick a result, paste an override link, or open AnikotoTV home.
 - The app does not auto-update AniList progress after playback.
 
 ## Acknowledgments
