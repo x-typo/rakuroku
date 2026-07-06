@@ -46,7 +46,6 @@ final class AuthStore {
         components?.queryItems = [
             URLQueryItem(name: "client_id", value: clientId),
             URLQueryItem(name: "response_type", value: "token"),
-            URLQueryItem(name: "redirect_uri", value: "\(callbackScheme)://\(callbackHost)"),
             URLQueryItem(name: "state", value: state),
         ]
 
@@ -85,8 +84,8 @@ final class AuthStore {
                 }
             }
 
-            guard callbackURL.scheme == callbackScheme, callbackURL.host == callbackHost else {
-                authError = "Invalid auth callback."
+            guard isExpectedCallbackURL(callbackURL) else {
+                authError = "AniList redirect URL must use \(callbackScheme)://."
                 return
             }
 
@@ -130,7 +129,7 @@ final class AuthStore {
 
     @discardableResult
     func setManualToken(_ token: String) -> Bool {
-        let normalized = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = normalizeAccessToken(token)
         guard !normalized.isEmpty else {
             authError = "Token cannot be empty."
             return false
@@ -158,6 +157,41 @@ final class AuthStore {
             return bytes.map { String(format: "%02x", $0) }.joined()
         }
         return UUID().uuidString
+    }
+
+    private func normalizeAccessToken(_ token: String) -> String {
+        var normalized = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let callbackToken = accessToken(fromCallbackText: normalized) {
+            normalized = callbackToken
+        }
+        if normalized.lowercased().hasPrefix("bearer ") {
+            normalized = String(normalized.dropFirst("bearer ".count))
+        }
+        return normalized.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func accessToken(fromCallbackText text: String) -> String? {
+        guard let components = URLComponents(string: text) else { return nil }
+        if let token = value(named: "access_token", in: components.fragment) {
+            return token
+        }
+        return components.queryItems?.first { $0.name == "access_token" }?.value
+    }
+
+    private func value(named name: String, in fragment: String?) -> String? {
+        guard let fragment else { return nil }
+        return URLComponents(string: "?\(fragment)")?
+            .queryItems?
+            .first { $0.name == name }?
+            .value
+    }
+
+    private func isExpectedCallbackURL(_ url: URL) -> Bool {
+        guard url.scheme == callbackScheme else { return false }
+        guard let host = url.host, !host.isEmpty else {
+            return url.path.isEmpty || url.path == "/"
+        }
+        return host == callbackHost
     }
 }
 

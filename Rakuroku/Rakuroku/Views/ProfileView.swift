@@ -22,6 +22,9 @@ struct ProfileView: View {
                     Text(error).foregroundStyle(Theme.error)
                     Button("Retry") { Task { await loadData() } }
                         .buttonStyle(.borderedProminent).tint(Theme.primary)
+                    Button("Sign Out") { authStore.logout() }
+                        .buttonStyle(.bordered)
+                        .tint(Theme.textSecondary)
                 }
             } else if let user {
                 ScrollView {
