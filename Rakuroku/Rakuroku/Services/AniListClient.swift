@@ -16,6 +16,9 @@ enum AniListError: LocalizedError {
     }
 
     var isAuthenticationFailure: Bool {
+        if case .graphQLError(let message) = self {
+            return message.localizedCaseInsensitiveContains("invalid token")
+        }
         if case .apiError(let code) = self {
             return code == 401 || code == 403
         }
@@ -74,12 +77,23 @@ actor AniListClient {
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
+        let decodedResponse = Result { try decoder.decode(GraphQLResponse<T>.self, from: data) }
+
         if let http = response as? HTTPURLResponse, !((200...299).contains(http.statusCode)) {
             if http.statusCode == 429 { throw AniListError.rateLimited }
+            if case .success(let gqlResponse) = decodedResponse, let first = gqlResponse.errors?.first {
+                if let status = first.status {
+                    if status == 429 { throw AniListError.rateLimited }
+                    if status == 401 || status == 403 || status == 404 {
+                        throw AniListError.apiError(status)
+                    }
+                }
+                throw AniListError.graphQLError(first.message)
+            }
             throw AniListError.apiError(http.statusCode)
         }
 
-        let gqlResponse = try decoder.decode(GraphQLResponse<T>.self, from: data)
+        let gqlResponse = try decodedResponse.get()
 
         if let errors = gqlResponse.errors, let first = errors.first {
             if let status = first.status {
