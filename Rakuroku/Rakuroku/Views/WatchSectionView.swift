@@ -13,6 +13,7 @@ struct WatchSectionView: View {
 
     @Environment(AuthStore.self) private var authStore
     @Environment(AnikotoTVStore.self) private var anikotoTVStore
+    @Environment(\.openURL) private var openURL
 
     @State private var watchLoading = false
     @State private var watchError: String?
@@ -22,7 +23,8 @@ struct WatchSectionView: View {
     @State private var overrideInput = ""
     @State private var overrideInputError: String?
     @State private var safariDestination: SafariDestination?
-    @State private var discussionUrl: URL?
+    @State private var discussionMatch: RedditDiscussion.Match?
+    @State private var discussionLoading = false
 
     private var currentProgress: Int { userEntry?.progress ?? 0 }
     private var nextEp: Int { currentProgress + 1 }
@@ -83,24 +85,29 @@ struct WatchSectionView: View {
                     }
 
                     Button {
-                        if let url = discussionUrl {
-                            safariDestination = SafariDestination(url: url)
+                        if let match = discussionMatch {
+                            openURL(match.url)
                         }
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: "bubble.left.fill")
-                                .font(.caption2)
-                            Text("Discuss")
+                            if discussionLoading {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: "bubble.left.fill")
+                                    .font(.caption2)
+                            }
+                            Text(discussionMatch.map { "Discuss Ep \($0.episode)" } ?? "Discuss")
                                 .font(.caption.weight(.semibold))
                         }
-                        .foregroundStyle(discussionUrl != nil ? Theme.textPrimary : Theme.textSecondary)
+                        .foregroundStyle(discussionMatch != nil ? Theme.textPrimary : Theme.textSecondary)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .background(Theme.surface)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
-                        .opacity(discussionUrl != nil ? 1 : 0.4)
+                        .opacity(discussionMatch != nil || discussionLoading ? 1 : 0.4)
                     }
-                    .disabled(discussionUrl == nil)
+                    .disabled(discussionMatch == nil)
 
                     if anikotoTVStore.hasOverride(mediaId: media.id) {
                         Button {
@@ -141,31 +148,22 @@ struct WatchSectionView: View {
         .task(id: discussionLookupKey) {
             guard canWatch else {
                 if !Task.isCancelled {
-                    discussionUrl = nil
+                    discussionMatch = nil
+                    discussionLoading = false
                 }
                 return
             }
             guard !Task.isCancelled else { return }
 
-            let fallbackUrl = RedditDiscussion.searchUrl(anilistId: media.id)
-            discussionUrl = fallbackUrl
-
-            let episode: Int
-            if currentProgress > 0 {
-                episode = currentProgress
-            } else if let nextEp = media.nextAiringEpisode, nextEp.episode > 1 {
-                episode = nextEp.episode - 1
-            } else {
-                return
-            }
-
-            let exactUrl = await RedditDiscussion.findUrl(
+            discussionMatch = nil
+            discussionLoading = true
+            let match = await RedditDiscussion.findMatch(
                 anilistId: media.id,
-                episode: episode,
-                airingAt: Int(Date().timeIntervalSince1970)
+                maximumEpisode: nextEp
             )
             guard !Task.isCancelled else { return }
-            discussionUrl = exactUrl ?? fallbackUrl
+            discussionMatch = match
+            discussionLoading = false
         }
         .sheet(isPresented: $showCandidateSheet) { candidateSheet }
         .sheet(isPresented: $showOverrideSheet) { overrideSheet }
