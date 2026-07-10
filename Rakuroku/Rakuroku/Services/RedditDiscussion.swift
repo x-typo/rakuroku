@@ -1,6 +1,6 @@
 import Foundation
 
-enum RedditDiscussion {
+nonisolated enum RedditDiscussion {
 
     private enum Request {
         static let rootURL = "https://www.reddit.com"
@@ -34,6 +34,7 @@ enum RedditDiscussion {
         let episode: Int
     }
 
+    @concurrent
     static func findMatch(anilistId: Int, maximumEpisode: Int) async -> Match? {
         guard maximumEpisode > 0 else { return nil }
 
