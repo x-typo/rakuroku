@@ -72,11 +72,11 @@ enum RedditDiscussion {
                   entry.subreddit == Request.subreddit,
                   entry.content.contains(expectedNeedle),
                   let episode = parseEpisode(from: entry.title),
-                  isDiscussionURL(entry.url),
+                  let url = normalizedDiscussionURL(entry.url),
                   episode <= maximumEpisode else { return nil }
 
             return Candidate(
-                url: entry.url,
+                url: url,
                 episode: episode,
                 feedIndex: index
             )
@@ -108,10 +108,18 @@ enum RedditDiscussion {
         return Int(title[range])
     }
 
-    private static func isDiscussionURL(_ url: URL) -> Bool {
-        url.scheme == "https"
-            && url.host == "www.reddit.com"
-            && url.path.hasPrefix("/r/anime/comments/")
+    private static func normalizedDiscussionURL(_ url: URL) -> URL? {
+        let allowedHosts = ["www.reddit.com", "reddit.com", "old.reddit.com"]
+        guard url.scheme == "https",
+              let host = url.host?.lowercased(),
+              allowedHosts.contains(host),
+              url.path.hasPrefix("/r/anime/comments/"),
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+
+        components.host = "www.reddit.com"
+        return components.url
     }
 
     private final class FeedParser: NSObject, XMLParserDelegate {
@@ -125,7 +133,8 @@ enum RedditDiscussion {
 
         private struct PendingEntry {
             var title = ""
-            var url: URL?
+            var firstURL: URL?
+            var alternateURL: URL?
             var author = ""
             var subreddit = ""
             var content = ""
@@ -152,7 +161,14 @@ enum RedditDiscussion {
             if elementName == "link",
                let href = attributeDict["href"],
                let url = URL(string: href) {
-                pendingEntry?.url = url
+                if pendingEntry?.firstURL == nil {
+                    pendingEntry?.firstURL = url
+                }
+                if attributeDict["rel"]?.lowercased() == "alternate"
+                    || attributeDict["rel"] == nil,
+                   pendingEntry?.alternateURL == nil {
+                    pendingEntry?.alternateURL = url
+                }
             } else if elementName == "category" {
                 pendingEntry?.subreddit = attributeDict["term"] ?? ""
             }
@@ -179,7 +195,7 @@ enum RedditDiscussion {
             case "content":
                 entry.content = text
             case "entry":
-                if let url = entry.url {
+                if let url = entry.alternateURL ?? entry.firstURL {
                     entries.append(Entry(
                         title: entry.title,
                         url: url,
