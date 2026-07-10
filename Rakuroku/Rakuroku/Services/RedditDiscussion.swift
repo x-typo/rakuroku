@@ -10,7 +10,7 @@ nonisolated enum RedditDiscussion {
         static let subreddit = "anime"
         static let userAgent = "rakuroku/1.0 (reddit-discussion-linker)"
         static let acceptFeed = "application/atom+xml"
-        static let searchLimit = "25"
+        static let searchLimit = "100"
         static let restrictToSubreddit = "1"
         static let sortNewest = "new"
         static let timeout: TimeInterval = 15
