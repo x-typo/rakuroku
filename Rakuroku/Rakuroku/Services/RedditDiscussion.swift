@@ -1,16 +1,16 @@
 import Foundation
 
-enum RedditDiscussion {
+nonisolated enum RedditDiscussion {
 
     private enum Request {
         static let rootURL = "https://www.reddit.com"
-        static let browserSearchPath = "/r/anime/search/"
-        static let jsonSearchPath = "/r/anime/search.json"
+        static let feedSearchPath = "/r/anime/search.rss"
         static let author = "AutoLovepon"
+        static let feedAuthor = "/u/\(author)"
         static let subreddit = "anime"
         static let userAgent = "rakuroku/1.0 (reddit-discussion-linker)"
-        static let acceptJSON = "application/json"
-        static let searchLimit = "25"
+        static let acceptFeed = "application/atom+xml"
+        static let searchLimit = "100"
         static let restrictToSubreddit = "1"
         static let sortNewest = "new"
         static let timeout: TimeInterval = 15
@@ -29,14 +29,16 @@ enum RedditDiscussion {
         options: .caseInsensitive
     )
 
-    static func searchUrl(anilistId: Int) -> URL? {
-        var components = URLComponents(string: Request.rootURL + Request.browserSearchPath)
-        components?.queryItems = searchQueryItems(anilistId: anilistId)
-        return components?.url
+    struct Match: Sendable {
+        let url: URL
+        let episode: Int
     }
 
-    static func findUrl(anilistId: Int, episode: Int, airingAt: Int) async -> URL? {
-        var components = URLComponents(string: Request.rootURL + Request.jsonSearchPath)
+    @concurrent
+    static func findMatch(anilistId: Int, maximumEpisode: Int) async -> Match? {
+        guard maximumEpisode > 0 else { return nil }
+
+        var components = URLComponents(string: Request.rootURL + Request.feedSearchPath)
         var queryItems = searchQueryItems(anilistId: anilistId)
         queryItems.append(URLQueryItem(name: "limit", value: Request.searchLimit))
         components?.queryItems = queryItems
@@ -47,65 +49,47 @@ enum RedditDiscussion {
 
         var request = URLRequest(url: searchURL, timeoutInterval: Request.timeout)
         request.setValue(Request.userAgent, forHTTPHeaderField: "User-Agent")
-        request.setValue(Request.acceptJSON, forHTTPHeaderField: "Accept")
+        request.setValue(Request.acceptFeed, forHTTPHeaderField: "Accept")
 
         guard let (data, response) = try? await URLSession.shared.data(for: request),
               let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             return nil
         }
 
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let listing = json["data"] as? [String: Any],
-              let children = listing["children"] as? [[String: Any]] else {
-            return nil
-        }
-
         let expectedNeedle = Request.aniListNeedle(anilistId: anilistId)
+        let feedParser = FeedParser()
+        let parser = XMLParser(data: data)
+        parser.delegate = feedParser
+        guard parser.parse() else { return nil }
 
         struct Candidate {
-            let permalink: String
-            let parsedEpisode: Int?
-            let createdUtc: Double
+            let url: URL
+            let episode: Int
+            let feedIndex: Int
         }
 
-        let candidates: [Candidate] = children.compactMap { child in
-            guard let post = child["data"] as? [String: Any],
-                  let author = post["author"] as? String, author == Request.author,
-                  let subreddit = post["subreddit"] as? String, subreddit == Request.subreddit,
-                  let title = post["title"] as? String,
-                  let permalink = post["permalink"] as? String else { return nil }
+        let candidates: [Candidate] = feedParser.entries.enumerated().compactMap { index, entry in
+            guard entry.author == Request.feedAuthor,
+                  entry.subreddit == Request.subreddit,
+                  entry.content.contains(expectedNeedle),
+                  let episode = parseEpisode(from: entry.title),
+                  let url = normalizedDiscussionURL(entry.url),
+                  episode <= maximumEpisode else { return nil }
 
-            if let selftext = post["selftext"] as? String, !selftext.contains(expectedNeedle) {
-                return nil
-            }
-
-            let createdUtc = post["created_utc"] as? Double ?? 0
             return Candidate(
-                permalink: permalink,
-                parsedEpisode: parseEpisode(from: title),
-                createdUtc: createdUtc
+                url: url,
+                episode: episode,
+                feedIndex: index
             )
-        }.sorted { $0.createdUtc > $1.createdUtc }
-
-        // Prefer exact episode match
-        if let exact = candidates.first(where: { $0.parsedEpisode == episode }) {
-            return URL(string: Request.rootURL + exact.permalink)
+        }.sorted {
+            if $0.episode != $1.episode {
+                return $0.episode > $1.episode
+            }
+            return $0.feedIndex < $1.feedIndex
         }
 
-        // Fall back to closest by airing time
-        let airingUtc = Double(airingAt)
-        let earlyWindow: Double = 12 * 3600
-        let lateWindow: Double = 3 * 86400
-
-        let timed = candidates
-            .filter { $0.createdUtc > 0 && $0.createdUtc >= airingUtc - earlyWindow && $0.createdUtc <= airingUtc + lateWindow }
-            .sorted { abs($0.createdUtc - airingUtc) < abs($1.createdUtc - airingUtc) }
-
-        if let best = timed.first {
-            return URL(string: Request.rootURL + best.permalink)
-        }
-
-        return nil
+        guard let best = candidates.first else { return nil }
+        return Match(url: best.url, episode: best.episode)
     }
 
     private static func searchQueryItems(anilistId: Int) -> [URLQueryItem] {
@@ -123,5 +107,113 @@ enum RedditDiscussion {
             return nil
         }
         return Int(title[range])
+    }
+
+    private static func normalizedDiscussionURL(_ url: URL) -> URL? {
+        let allowedHosts = ["www.reddit.com", "reddit.com", "old.reddit.com"]
+        guard url.scheme == "https",
+              let host = url.host?.lowercased(),
+              allowedHosts.contains(host),
+              url.path.hasPrefix("/r/anime/comments/"),
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+
+        components.host = "www.reddit.com"
+        return components.url
+    }
+
+    private final class FeedParser: NSObject, XMLParserDelegate {
+        struct Entry {
+            let title: String
+            let url: URL
+            let author: String
+            let subreddit: String
+            let content: String
+        }
+
+        private struct PendingEntry {
+            var title = ""
+            var firstURL: URL?
+            var alternateURL: URL?
+            var author = ""
+            var subreddit = ""
+            var content = ""
+        }
+
+        private(set) var entries: [Entry] = []
+        private var pendingEntry: PendingEntry?
+        private var text = ""
+
+        func parser(
+            _ parser: XMLParser,
+            didStartElement elementName: String,
+            namespaceURI: String?,
+            qualifiedName qName: String?,
+            attributes attributeDict: [String: String] = [:]
+        ) {
+            if elementName == "entry" {
+                pendingEntry = PendingEntry()
+            }
+
+            guard pendingEntry != nil else { return }
+            text = ""
+
+            if elementName == "link",
+               let href = attributeDict["href"],
+               let url = URL(string: href) {
+                if pendingEntry?.firstURL == nil {
+                    pendingEntry?.firstURL = url
+                }
+                if attributeDict["rel"]?.lowercased() == "alternate"
+                    || attributeDict["rel"] == nil,
+                   pendingEntry?.alternateURL == nil {
+                    pendingEntry?.alternateURL = url
+                }
+            } else if elementName == "category" {
+                pendingEntry?.subreddit = attributeDict["term"] ?? ""
+            }
+        }
+
+        func parser(_ parser: XMLParser, foundCharacters string: String) {
+            guard pendingEntry != nil else { return }
+            text += string
+        }
+
+        func parser(
+            _ parser: XMLParser,
+            didEndElement elementName: String,
+            namespaceURI: String?,
+            qualifiedName qName: String?
+        ) {
+            guard var entry = pendingEntry else { return }
+
+            switch elementName {
+            case "title":
+                entry.title = text
+            case "name":
+                entry.author = text
+            case "content":
+                entry.content = text
+            case "entry":
+                if let url = entry.alternateURL ?? entry.firstURL {
+                    entries.append(Entry(
+                        title: entry.title,
+                        url: url,
+                        author: entry.author,
+                        subreddit: entry.subreddit,
+                        content: entry.content
+                    ))
+                }
+                pendingEntry = nil
+                text = ""
+                return
+            default:
+                break
+            }
+
+            pendingEntry = entry
+            text = ""
+        }
     }
 }
