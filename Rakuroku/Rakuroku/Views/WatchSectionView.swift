@@ -97,8 +97,10 @@ struct WatchSectionView: View {
                                 Image(systemName: "bubble.left.fill")
                                     .font(.caption2)
                             }
-                            Text(discussionMatch.map { "Discuss Ep \($0.episode)" } ?? "Discuss")
-                                .font(.caption.weight(.semibold))
+                            if let discussionMatch {
+                                Text("Ep \(discussionMatch.episode)")
+                                    .font(.caption.weight(.semibold))
+                            }
                         }
                         .foregroundStyle(discussionMatch != nil ? Theme.textPrimary : Theme.textSecondary)
                         .padding(.horizontal, 12)
@@ -108,6 +110,11 @@ struct WatchSectionView: View {
                         .opacity(discussionMatch != nil || discussionLoading ? 1 : 0.4)
                     }
                     .disabled(discussionMatch == nil)
+                    .accessibilityLabel(
+                        discussionLoading
+                            ? "Loading discussion"
+                            : (discussionMatch.map { "Discuss episode \($0.episode)" } ?? "Discuss")
+                    )
 
                     if anikotoTVStore.hasOverride(mediaId: media.id) {
                         Button {
