@@ -110,7 +110,11 @@ struct WatchSectionView: View {
                         .opacity(discussionMatch != nil || discussionLoading ? 1 : 0.4)
                     }
                     .disabled(discussionMatch == nil)
-                    .accessibilityLabel(discussionMatch.map { "Discuss episode \($0.episode)" } ?? "Discuss")
+                    .accessibilityLabel(
+                        discussionLoading
+                            ? "Loading discussion"
+                            : (discussionMatch.map { "Discuss episode \($0.episode)" } ?? "Discuss")
+                    )
 
                     if anikotoTVStore.hasOverride(mediaId: media.id) {
                         Button {
