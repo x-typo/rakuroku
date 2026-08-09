@@ -65,11 +65,30 @@ struct MediaListView: View {
                 ContentErrorView(message: error) { Task { await loadData() } }
             } else {
                 List {
-                    ForEach(filteredEntries) { entry in
-                        MediaCardView(entry: entry, type: type)
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                    if filteredEntries.isEmpty {
+                        VStack(spacing: 12) {
+                            Image(systemName: searchQuery.isEmpty ? "tray" : "magnifyingglass")
+                                .font(.title)
+                                .foregroundStyle(Theme.textSecondary)
+                                .accessibilityHidden(true)
+                            Text(searchQuery.isEmpty ? "No items in \(selectedFilter)" : "No matching titles")
+                                .foregroundStyle(Theme.textSecondary)
+                            if !searchQuery.isEmpty {
+                                Button("Clear Search") { searchQuery = "" }
+                                    .buttonStyle(.bordered)
+                                    .tint(Theme.primary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 280)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                    } else {
+                        ForEach(filteredEntries) { entry in
+                            MediaCardView(entry: entry, type: type)
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
+                                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                        }
                     }
                 }
                 .listStyle(.plain)
@@ -79,9 +98,6 @@ struct MediaListView: View {
         }
         .background(Theme.background)
         .task { await loadData() }
-        .onAppear {
-            if hasLoadedOnce { Task { await loadData() } }
-        }
         .sheet(isPresented: $showFilter) {
             let title = type == .anime ? "Anime List" : "Manga List"
             FilterSheet(title: title, filters: filters, selectedFilter: $selectedFilter)

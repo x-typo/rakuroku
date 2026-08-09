@@ -153,7 +153,7 @@ struct WatchSectionView: View {
         .padding(.horizontal, 16)
         .padding(.top, 12)
         .task(id: discussionLookupKey) {
-            guard canWatch else {
+            guard canWatch, currentProgress > 0 else {
                 if !Task.isCancelled {
                     discussionMatch = nil
                     discussionLoading = false
@@ -166,7 +166,7 @@ struct WatchSectionView: View {
             discussionLoading = true
             let match = await RedditDiscussion.findMatch(
                 anilistId: media.id,
-                maximumEpisode: nextEp
+                maximumWatchedEpisode: currentProgress
             )
             guard !Task.isCancelled else { return }
             discussionMatch = match

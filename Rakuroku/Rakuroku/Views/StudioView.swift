@@ -10,6 +10,7 @@ struct StudioView: View {
     @State private var userStatusMap: [Int: MediaListStatus] = [:]
     @State private var loading = true
     @State private var error: String?
+    @State private var personalizationWarning: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -17,6 +18,10 @@ struct StudioView: View {
                 .font(.title3.bold())
                 .foregroundStyle(Theme.textPrimary)
                 .padding(.vertical, 16)
+
+            if let personalizationWarning {
+                ContentWarningView(message: personalizationWarning)
+            }
 
             if loading {
                 ContentLoadingView()
@@ -99,12 +104,41 @@ struct StudioView: View {
     private func loadData() async {
         if media.isEmpty { loading = true }
         error = nil
+        personalizationWarning = nil
+        userStatusMap = [:]
         do {
             async let studioData = AniListClient.shared.fetchStudioDetails(studioId: studioId)
-            async let animeList = AniListClient.shared.fetchMediaList(type: .anime, username: authStore.username, accessToken: authStore.accessToken)
-            let (s, list) = try await (studioData, animeList)
+            let username = authStore.username.trimmingCharacters(in: .whitespacesAndNewlines)
+            async let animeList: [MediaListEntry]? = !username.isEmpty
+                ? AniListClient.shared.fetchMediaList(
+                    type: .anime,
+                    username: username,
+                    accessToken: authStore.accessToken
+                )
+                : nil
+
+            let s = try await studioData
+            try Task.checkCancellation()
             media = s
-            userStatusMap = Dictionary(uniqueKeysWithValues: list.map { ($0.media.id, $0.status) })
+            loading = false
+
+            do {
+                if let list = try await animeList {
+                    try Task.checkCancellation()
+                    userStatusMap = Dictionary(
+                        list.map { ($0.media.id, $0.status) },
+                        uniquingKeysWith: { _, latest in latest }
+                    )
+                }
+            } catch where error.isCancellation {
+                throw error
+            } catch AniListError.rateLimited {
+                userStatusMap = [:]
+                personalizationWarning = "List status unavailable. \(AniListError.rateLimited.localizedDescription)"
+            } catch {
+                userStatusMap = [:]
+                personalizationWarning = "List status unavailable. \(error.localizedDescription)"
+            }
         } catch where error.isCancellation {
         } catch {
             self.error = error.localizedDescription

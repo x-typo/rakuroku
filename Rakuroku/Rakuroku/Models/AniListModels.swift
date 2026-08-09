@@ -214,6 +214,7 @@ struct ActivityPage: Codable, Sendable {
 
 struct MediaRelationNode: Codable, Sendable, Identifiable {
     let id: Int
+    let isAdult: Bool?
     let title: MediaTitle
     let coverImage: MediaCoverImage?
     let format: String?
@@ -228,10 +229,21 @@ struct MediaRelationEdge: Codable, Sendable {
 
 struct MediaRelationConnection: Codable, Sendable {
     let edges: [MediaRelationEdge]?
+
+    private enum CodingKeys: String, CodingKey {
+        case edges
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        edges = try container.decodeIfPresent([MediaRelationEdge].self, forKey: .edges)?
+            .filter { $0.node.isAdult != true }
+    }
 }
 
 struct MediaDetails: Codable, Sendable, Identifiable {
     let id: Int
+    let isAdult: Bool?
     let title: MediaTitle
     let coverImage: MediaCoverImage?
     let bannerImage: String?
@@ -291,6 +303,7 @@ struct SeasonalMedia: Codable, Sendable, Identifiable {
 
 struct StudioMedia: Codable, Sendable, Identifiable {
     let id: Int
+    let isAdult: Bool?
     let title: MediaTitle
     let coverImage: MediaCoverImage?
     let episodes: Int?

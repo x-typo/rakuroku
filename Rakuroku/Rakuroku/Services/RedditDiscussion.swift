@@ -35,8 +35,8 @@ nonisolated enum RedditDiscussion {
     }
 
     @concurrent
-    static func findMatch(anilistId: Int, maximumEpisode: Int) async -> Match? {
-        guard maximumEpisode > 0 else { return nil }
+    static func findMatch(anilistId: Int, maximumWatchedEpisode: Int) async -> Match? {
+        guard maximumWatchedEpisode > 0 else { return nil }
 
         var components = URLComponents(string: Request.rootURL + Request.feedSearchPath)
         var queryItems = searchQueryItems(anilistId: anilistId)
@@ -74,7 +74,7 @@ nonisolated enum RedditDiscussion {
                   entry.content.contains(expectedNeedle),
                   let episode = parseEpisode(from: entry.title),
                   let url = normalizedDiscussionURL(entry.url),
-                  episode <= maximumEpisode else { return nil }
+                  episode <= maximumWatchedEpisode else { return nil }
 
             return Candidate(
                 url: url,
