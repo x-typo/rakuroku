@@ -80,7 +80,7 @@ xcrun devicectl device install app --device "$DEVICE_ID" "$(find ~/Library/Devel
 
 ## Testing Direction
 
-- There is no test target yet.
-- Prefer Swift Testing (`@Suite`, `@Test`, `#expect`) if a test target is added.
-- Prioritize pure functions first: formatters, model computed properties, and `AnikotoTVResolver` parsing.
-- No mocking framework is needed for the first test target; use real domain objects.
+- The `RakurokuTests` target uses Swift Testing (`@Suite`, `@Test`, `#expect`).
+- Keep tests fast, deterministic, and network-free; prioritize pure functions and injected async loaders before adding broader UI or integration coverage.
+- Current coverage includes formatters, model filtering, `AnikotoTVResolver` parsing, airing-schedule date ranges, and user-activity pagination/backfill.
+- No mocking framework is currently needed; use real domain objects and small test seams when new orchestration logic needs isolation.
