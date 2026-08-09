@@ -1,7 +1,10 @@
 import SwiftUI
 
 struct DiscoverView: View {
-
+    private struct SearchRequest: Hashable, Sendable {
+        let query: String
+        let generation: Int
+    }
 
     @State private var currentSeasonAnime: [SeasonalMedia] = []
     @State private var nextSeasonAnime: [SeasonalMedia] = []
@@ -13,11 +16,16 @@ struct DiscoverView: View {
     @State private var loadingMore = false
     @State private var hasNextPage = false
     @State private var currentPage = 1
-    @State private var searchTask: Task<Void, Never>?
+    @State private var searchError: String?
+    @State private var loadMoreError: String?
+    @State private var searchRequest = SearchRequest(query: "", generation: 0)
 
     private let seasonInfo = Formatters.currentSeason()
     private var nextSeasonInfo: (season: Season, year: Int) {
         Formatters.nextSeason(after: seasonInfo)
+    }
+    private var normalizedSearchQuery: String {
+        normalizeSearchQuery(searchQuery)
     }
 
     var body: some View {
@@ -26,7 +34,7 @@ struct DiscoverView: View {
                 .padding(.top, 16)
                 .padding(.bottom, 12)
 
-            if !searchQuery.isEmpty {
+            if !normalizedSearchQuery.isEmpty {
                 searchResultsView
             } else if loading {
                 ContentLoadingView()
@@ -56,20 +64,9 @@ struct DiscoverView: View {
         }
         .background(Theme.background)
         .task { await loadData() }
-        .onDisappear { searchTask?.cancel() }
+        .task(id: searchRequest) { await performSearch(searchRequest) }
         .onChange(of: searchQuery) { _, newValue in
-            searchTask?.cancel()
-            if newValue.trimmingCharacters(in: .whitespaces).isEmpty {
-                searchResults = []
-                searching = false
-                return
-            }
-            searching = true
-            searchTask = Task {
-                try? await Task.sleep(for: .milliseconds(300))
-                guard !Task.isCancelled else { return }
-                await performSearch(newValue)
-            }
+            beginSearch(for: newValue)
         }
     }
 
@@ -147,6 +144,8 @@ struct DiscoverView: View {
             Spacer()
             ProgressView().tint(Theme.primary)
             Spacer()
+        } else if let searchError, searchResults.isEmpty {
+            ContentErrorView(message: searchError) { retrySearch() }
         } else if searchResults.isEmpty {
             Spacer()
             Text("No results found")
@@ -203,7 +202,20 @@ struct DiscoverView: View {
                         ProgressView().tint(Theme.primary).padding()
                     }
 
-                    if hasNextPage && !loadingMore {
+                    if let loadMoreError {
+                        VStack(spacing: 8) {
+                            Text(loadMoreError)
+                                .font(.caption)
+                                .foregroundStyle(Theme.error)
+                                .multilineTextAlignment(.center)
+                            Button("Retry") { Task { await loadMoreSearch() } }
+                                .buttonStyle(.bordered)
+                                .tint(Theme.primary)
+                        }
+                        .padding()
+                    }
+
+                    if hasNextPage && !loadingMore && loadMoreError == nil {
                         Color.clear.frame(height: 1)
                             .onAppear { Task { await loadMoreSearch() } }
                     }
@@ -232,33 +244,83 @@ struct DiscoverView: View {
         loading = false
     }
 
-    private func performSearch(_ query: String) async {
+    private func beginSearch(for rawQuery: String) {
+        let query = normalizeSearchQuery(rawQuery)
+        searchRequest = SearchRequest(
+            query: query,
+            generation: searchRequest.generation &+ 1
+        )
+        searchResults = []
         currentPage = 1
+        hasNextPage = false
+        searching = !query.isEmpty
+        loadingMore = false
+        searchError = nil
+        loadMoreError = nil
+    }
+
+    private func retrySearch() {
+        guard !normalizedSearchQuery.isEmpty else { return }
+        searchError = nil
+        searching = true
+        searchRequest = SearchRequest(
+            query: normalizedSearchQuery,
+            generation: searchRequest.generation &+ 1
+        )
+    }
+
+    private func performSearch(_ request: SearchRequest) async {
+        guard !request.query.isEmpty else { return }
         do {
-            let result = try await AniListClient.shared.searchMedia(query: query, page: 1, perPage: 25)
+            try await Task.sleep(for: .milliseconds(300))
+            let result = try await AniListClient.shared.searchMedia(query: request.query, page: 1, perPage: 25)
+            try Task.checkCancellation()
+            guard request == searchRequest, request.query == normalizedSearchQuery else { return }
             searchResults = result.media
             hasNextPage = result.hasNextPage
+            currentPage = 1
+            searchError = nil
+            loadMoreError = nil
+            searching = false
+        } catch where error.isCancellation {
         } catch {
+            guard request == searchRequest, request.query == normalizedSearchQuery else { return }
             searchResults = []
             hasNextPage = false
+            searchError = error.localizedDescription
+            searching = false
         }
-        searching = false
     }
 
     private func loadMoreSearch() async {
-        guard !loadingMore, hasNextPage, !searchQuery.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        let request = searchRequest
+        guard !loadingMore,
+              hasNextPage,
+              !request.query.isEmpty,
+              request.query == normalizedSearchQuery else { return }
+
         loadingMore = true
+        loadMoreError = nil
         let nextPage = currentPage + 1
         do {
-            let result = try await AniListClient.shared.searchMedia(query: searchQuery, page: nextPage, perPage: 25)
+            let result = try await AniListClient.shared.searchMedia(query: request.query, page: nextPage, perPage: 25)
+            try Task.checkCancellation()
+            guard request == searchRequest, request.query == normalizedSearchQuery else { return }
             let existingIds = Set(searchResults.map(\.id))
             let newItems = result.media.filter { !existingIds.contains($0.id) }
             searchResults.append(contentsOf: newItems)
             hasNextPage = result.hasNextPage
             currentPage = nextPage
+            loadingMore = false
+        } catch where error.isCancellation {
         } catch {
-            hasNextPage = false
+            guard request == searchRequest, request.query == normalizedSearchQuery else { return }
+            loadMoreError = error.localizedDescription
+            loadingMore = false
         }
-        loadingMore = false
+    }
+
+    private func normalizeSearchQuery(_ query: String) -> String {
+        query.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

@@ -39,9 +39,15 @@ nonisolated enum AnikotoTVResolver {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
-        if let url = URL(string: trimmed),
-           let host = url.host?.lowercased(),
-           host == "anikototv.to" || host.hasSuffix(".anikototv.to") {
+        if let components = URLComponents(string: trimmed),
+           components.scheme != nil || components.host != nil {
+            guard let scheme = components.scheme?.lowercased(),
+                  scheme == "https" || scheme == "http",
+                  let host = components.host?.lowercased(),
+                  host == "anikototv.to" || host.hasSuffix(".anikototv.to"),
+                  let url = components.url else {
+                return nil
+            }
             return extractWatchPathFromURL(url)
         }
 

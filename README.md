@@ -39,6 +39,7 @@ Rakuroku/Rakuroku/
   Views/         # SwiftUI views (screens + components)
     Components/  # Reusable UI (MediaCard, SearchBar, FilterSheet, etc.)
   RakurokuApp.swift  # App entry point
+Rakuroku/RakurokuTests/  # Fast, network-free Swift Testing coverage
 ```
 
 ## Setup
@@ -47,6 +48,17 @@ Rakuroku/Rakuroku/
 2. Open `Rakuroku/Rakuroku.xcodeproj` in Xcode
 3. Select your development team under Signing & Capabilities
 4. Build and run on a simulator or device
+
+## Tests
+
+The `RakurokuTests` target covers deterministic date boundaries, provider URL normalization, model filtering, and formatter behavior with Swift Testing. Run it from Xcode with Product > Test, or from the repository root:
+
+```bash
+xcodebuild -project Rakuroku/Rakuroku.xcodeproj \
+  -scheme Rakuroku \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  test
+```
 
 ### AniList OAuth Configuration
 

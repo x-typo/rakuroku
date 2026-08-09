@@ -14,6 +14,8 @@ struct SeasonListView: View {
     @State private var hasNextPage = true
     @State private var loadingMore = false
     @State private var currentPage = 1
+    @State private var loadMoreError: String?
+    @State private var personalizationWarning: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,6 +30,10 @@ struct SeasonListView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16)
             .padding(.vertical, 16)
+
+            if let personalizationWarning {
+                ContentWarningView(message: personalizationWarning)
+            }
 
             if loading {
                 ContentLoadingView()
@@ -44,7 +50,20 @@ struct SeasonListView: View {
                             ProgressView().tint(Theme.primary).padding()
                         }
 
-                        if hasNextPage && !loadingMore {
+                        if let loadMoreError {
+                            VStack(spacing: 8) {
+                                Text(loadMoreError)
+                                    .font(.caption)
+                                    .foregroundStyle(Theme.error)
+                                    .multilineTextAlignment(.center)
+                                Button("Retry") { Task { await loadMore() } }
+                                    .buttonStyle(.bordered)
+                                    .tint(Theme.primary)
+                            }
+                            .padding()
+                        }
+
+                        if hasNextPage && !loadingMore && loadMoreError == nil {
                             Color.clear.frame(height: 1)
                                 .onAppear { Task { await loadMore() } }
                         }
@@ -114,13 +133,43 @@ struct SeasonListView: View {
         if media.isEmpty { loading = true }
         error = nil
         currentPage = 1
+        loadMoreError = nil
+        personalizationWarning = nil
+        userStatusMap = [:]
         do {
             async let seasonData = AniListClient.shared.fetchSeasonalAnime(season: season, year: year, page: 1, perPage: 25)
-            async let animeList = AniListClient.shared.fetchMediaList(type: .anime, username: authStore.username, accessToken: authStore.accessToken)
-            let (s, list) = try await (seasonData, animeList)
+            let username = authStore.username.trimmingCharacters(in: .whitespacesAndNewlines)
+            async let animeList: [MediaListEntry]? = !username.isEmpty
+                ? AniListClient.shared.fetchMediaList(
+                    type: .anime,
+                    username: username,
+                    accessToken: authStore.accessToken
+                )
+                : nil
+
+            let s = try await seasonData
+            try Task.checkCancellation()
             media = s.media
             hasNextPage = s.hasNextPage
-            userStatusMap = Dictionary(uniqueKeysWithValues: list.map { ($0.media.id, $0.status) })
+            loading = false
+
+            do {
+                if let list = try await animeList {
+                    try Task.checkCancellation()
+                    userStatusMap = Dictionary(
+                        list.map { ($0.media.id, $0.status) },
+                        uniquingKeysWith: { _, latest in latest }
+                    )
+                }
+            } catch where error.isCancellation {
+                throw error
+            } catch AniListError.rateLimited {
+                userStatusMap = [:]
+                personalizationWarning = "List status unavailable. \(AniListError.rateLimited.localizedDescription)"
+            } catch {
+                userStatusMap = [:]
+                personalizationWarning = "List status unavailable. \(error.localizedDescription)"
+            }
         } catch where error.isCancellation {
         } catch {
             self.error = error.localizedDescription
@@ -131,16 +180,19 @@ struct SeasonListView: View {
     private func loadMore() async {
         guard !loadingMore, hasNextPage else { return }
         loadingMore = true
+        loadMoreError = nil
         let nextPage = currentPage + 1
         do {
             let result = try await AniListClient.shared.fetchSeasonalAnime(season: season, year: year, page: nextPage, perPage: 25)
+            try Task.checkCancellation()
             let existingIds = Set(media.map(\.id))
             let newItems = result.media.filter { !existingIds.contains($0.id) }
             media.append(contentsOf: newItems)
             hasNextPage = result.hasNextPage
             currentPage = nextPage
+        } catch where error.isCancellation {
         } catch {
-            hasNextPage = false
+            loadMoreError = error.localizedDescription
         }
         loadingMore = false
     }

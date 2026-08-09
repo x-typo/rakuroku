@@ -172,11 +172,12 @@ struct MediaCardView: View {
 
         Task { @MainActor in
             do {
-                try await AniListClient.shared.updateProgress(
+                let updatedEntry = try await AniListClient.shared.updateProgress(
                     mediaId: entry.media.id,
                     progress: newProgress,
                     accessToken: token
                 )
+                localProgress = updatedEntry.progress
             } catch where error.isCancellation {
             } catch {
                 localProgress = previousProgress

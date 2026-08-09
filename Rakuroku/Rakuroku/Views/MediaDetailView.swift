@@ -1,6 +1,12 @@
 import SwiftUI
 
 struct MediaDetailView: View {
+    private enum EntryMutation: Equatable {
+        case score
+        case status
+        case progress
+    }
+
     let mediaId: Int
 
     @Environment(AuthStore.self) private var authStore
@@ -14,10 +20,9 @@ struct MediaDetailView: View {
     @State private var showScoreModal = false
     @State private var showStatusModal = false
     @State private var showProgressModal = false
-    @State private var updatingScore = false
-    @State private var updatingStatus = false
-    @State private var updatingProgress = false
+    @State private var entryMutation: EntryMutation?
     @State private var mutationError: String?
+    @State private var showDeleteConfirmation = false
 
     var body: some View {
         Group {
@@ -242,6 +247,7 @@ struct MediaDetailView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
+        .disabled(entryMutation != nil)
         .padding(.horizontal, 16)
         .padding(.top, 12)
     }
@@ -354,16 +360,18 @@ struct MediaDetailView: View {
                             }
                         }
                     }
+                    .disabled(entryMutation != nil)
                 }
             }
             .padding(.horizontal, 16)
 
-            if updatingScore { ProgressView().tint(Theme.primary) }
+            if entryMutation == .score { ProgressView().tint(Theme.primary) }
         }
         .padding(.top, 40)
         .padding(.bottom, 20)
         .presentationDetents([.medium])
         .presentationDragIndicator(.visible)
+        .interactiveDismissDisabled(entryMutation != nil)
     }
 
     private func scoreGradient(_ score: Int) -> Color {
@@ -421,20 +429,35 @@ struct MediaDetailView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                 }
+                .disabled(entryMutation != nil)
             }
             if userEntry != nil {
                 Button(role: .destructive) {
-                    Task { await handleDeleteEntry() }
+                    showDeleteConfirmation = true
                 } label: {
                     Text("Remove from List")
                         .foregroundStyle(Theme.error)
                         .padding(.vertical, 12)
                 }
+                .disabled(entryMutation != nil)
             }
-            if updatingStatus { ProgressView().tint(Theme.primary) }
+            if entryMutation == .status { ProgressView().tint(Theme.primary) }
         }
         .presentationDetents([.medium])
         .presentationDragIndicator(.visible)
+        .interactiveDismissDisabled(entryMutation != nil)
+        .confirmationDialog(
+            "Remove from List?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Remove", role: .destructive) {
+                Task { await handleDeleteEntry() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the title from your AniList account.")
+        }
     }
 
     @ViewBuilder
@@ -475,8 +498,9 @@ struct MediaDetailView: View {
                         .background(Theme.error)
                         .clipShape(Circle())
                 }
-                .disabled(progress <= 0 || updatingProgress)
-                .opacity(progress <= 0 || updatingProgress ? 0.4 : 1)
+                .disabled(progress <= 0 || entryMutation != nil)
+                .opacity(progress <= 0 || entryMutation != nil ? 0.4 : 1)
+                .accessibilityLabel("Decrease progress")
 
                 Button {
                     Task { await handleProgressUpdate(delta: 1) }
@@ -488,14 +512,16 @@ struct MediaDetailView: View {
                         .background(Theme.primary)
                         .clipShape(Circle())
                 }
-                .disabled(total.map { progress >= $0 } ?? false || updatingProgress)
-                .opacity(total.map { progress >= $0 } ?? false || updatingProgress ? 0.4 : 1)
+                .disabled(total.map { progress >= $0 } ?? false || entryMutation != nil)
+                .opacity(total.map { progress >= $0 } ?? false || entryMutation != nil ? 0.4 : 1)
+                .accessibilityLabel("Increase progress")
             }
 
-            if updatingProgress { ProgressView().tint(Theme.primary) }
+            if entryMutation == .progress { ProgressView().tint(Theme.primary) }
         }
         .padding(24)
         .presentationDetents([.height(320)])
+        .interactiveDismissDisabled(entryMutation != nil)
         .presentationDragIndicator(.visible)
     }
 
@@ -529,70 +555,89 @@ struct MediaDetailView: View {
     }
 
     private func handleScoreUpdate(_ score: Double) async {
-        guard let token = authStore.accessToken, let entry = userEntry else { return }
-        updatingScore = true
+        guard entryMutation == nil, let token = authStore.accessToken, userEntry != nil else { return }
+        entryMutation = .score
+        mutationError = nil
         do {
-            try await AniListClient.shared.updateScore(mediaId: mediaId, score: score, accessToken: token)
-            userEntry = UserMediaEntry(id: entry.id, status: entry.status, score: score, progress: entry.progress)
+            userEntry = try await AniListClient.shared.updateScore(
+                mediaId: mediaId,
+                score: score,
+                accessToken: token
+            )
             showScoreModal = false
+        } catch where error.isCancellation {
         } catch {
             mutationError = error.localizedDescription
         }
-        updatingScore = false
+        entryMutation = nil
     }
 
     private func handleStatusUpdate(_ status: MediaListStatus) async {
-        guard let token = authStore.accessToken, let entry = userEntry else { return }
-        updatingStatus = true
+        guard entryMutation == nil, let token = authStore.accessToken, userEntry != nil else { return }
+        entryMutation = .status
+        mutationError = nil
         do {
-            try await AniListClient.shared.updateStatus(mediaId: mediaId, status: status, accessToken: token)
-            userEntry = UserMediaEntry(id: entry.id, status: status, score: entry.score, progress: entry.progress)
+            userEntry = try await AniListClient.shared.updateStatus(
+                mediaId: mediaId,
+                status: status,
+                accessToken: token
+            )
             showStatusModal = false
+        } catch where error.isCancellation {
         } catch {
             mutationError = error.localizedDescription
         }
-        updatingStatus = false
+        entryMutation = nil
     }
 
     private func handleDeleteEntry() async {
-        guard let token = authStore.accessToken, let entry = userEntry else { return }
-        updatingStatus = true
+        guard entryMutation == nil, let token = authStore.accessToken, let entry = userEntry else { return }
+        entryMutation = .status
+        mutationError = nil
         do {
             try await AniListClient.shared.deleteMediaListEntry(entryId: entry.id, accessToken: token)
             userEntry = nil
             showStatusModal = false
+        } catch where error.isCancellation {
         } catch {
             mutationError = error.localizedDescription
         }
-        updatingStatus = false
+        entryMutation = nil
     }
 
     private func handleAddToList(_ status: MediaListStatus) async {
-        guard let token = authStore.accessToken else { return }
-        updatingStatus = true
+        guard entryMutation == nil, let token = authStore.accessToken else { return }
+        entryMutation = .status
+        mutationError = nil
         do {
             let entry = try await AniListClient.shared.addToList(mediaId: mediaId, status: status, accessToken: token)
             userEntry = entry
             showStatusModal = false
+        } catch where error.isCancellation {
         } catch {
             mutationError = error.localizedDescription
         }
-        updatingStatus = false
+        entryMutation = nil
     }
 
     private func handleProgressUpdate(delta: Int) async {
-        guard let token = authStore.accessToken, let entry = userEntry else { return }
+        guard entryMutation == nil, let token = authStore.accessToken, let entry = userEntry else { return }
         let total = media?.type == .anime ? media?.episodes : media?.chapters
         let newProgress = max(0, entry.progress + delta)
         if let total, newProgress > total { return }
 
-        updatingProgress = true
+        entryMutation = .progress
+        mutationError = nil
         do {
-            try await AniListClient.shared.updateProgress(mediaId: mediaId, progress: newProgress, accessToken: token)
-            userEntry = UserMediaEntry(id: entry.id, status: entry.status, score: entry.score, progress: newProgress)
+            userEntry = try await AniListClient.shared.updateProgress(
+                mediaId: mediaId,
+                progress: newProgress,
+                accessToken: token
+            )
+        } catch where error.isCancellation {
         } catch {
             mutationError = error.localizedDescription
         }
-        updatingProgress = false
+        entryMutation = nil
     }
 }

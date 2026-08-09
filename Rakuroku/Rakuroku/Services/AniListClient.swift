@@ -144,7 +144,14 @@ actor AniListClient {
 
         let allEntries = result.MediaListCollection.lists.flatMap(\.entries)
             .filter { $0.media.isAdult != true }
-        return allEntries.sorted { $0.updatedAt > $1.updatedAt }
+        var entriesByMediaID: [Int: MediaListEntry] = [:]
+        for entry in allEntries {
+            if let existing = entriesByMediaID[entry.media.id], existing.updatedAt >= entry.updatedAt {
+                continue
+            }
+            entriesByMediaID[entry.media.id] = entry
+        }
+        return entriesByMediaID.values.sorted { $0.updatedAt > $1.updatedAt }
     }
 
     func fetchMediaDetails(id: Int) async throws -> MediaDetails {
@@ -154,6 +161,9 @@ actor AniListClient {
             variables: ["id": AnyCodable(id)],
             as: Response.self
         )
+        guard result.Media.isAdult != true else {
+            throw AniListError.graphQLError("Content unavailable")
+        }
         return result.Media
     }
 
@@ -210,40 +220,45 @@ actor AniListClient {
     }
 
     func fetchUserActivities(userId: Int, perPage: Int = 15) async throws -> [ListActivity] {
-        struct Response: Decodable { let Page: ActivityPage }
-        let result = try await execute(
-            query: Queries.activity,
-            variables: ["userId": AnyCodable(userId), "page": 1, "perPage": AnyCodable(perPage)],
-            as: Response.self
-        )
-        return result.Page.activities
+        try await UserActivityPagination.fetch(limit: perPage) { page, pageSize in
+            struct Response: Decodable { let Page: ActivityPage }
+            let result = try await self.execute(
+                query: Queries.activity,
+                variables: [
+                    "userId": AnyCodable(userId),
+                    "page": AnyCodable(page),
+                    "perPage": AnyCodable(pageSize),
+                ],
+                as: Response.self
+            )
+            return result.Page
+        }
     }
 
     func fetchAiringSchedule(dayIndex: Int) async throws -> [AiringSchedule] {
-        let now = Date()
-        var calendar = Calendar.current
-        calendar.timeZone = .current
-        let currentDay = calendar.component(.weekday, from: now) - 1 // 0=Sun
-        let daysToAdd = dayIndex - currentDay
-
-        guard var targetDate = calendar.date(byAdding: .day, value: daysToAdd, to: now) else { return [] }
-        targetDate = calendar.startOfDay(for: targetDate)
-
-        let startOfDay = Int(targetDate.timeIntervalSince1970)
-        let endOfDay = startOfDay + 86400 - 1
+        guard let bounds = AiringScheduleDateRange.bounds(dayIndex: dayIndex) else { return [] }
 
         var allSchedules: [AiringSchedule] = []
         var page = 1
         var hasNextPage = true
 
         while hasNextPage && page <= 20 {
+            try Task.checkCancellation()
             struct Response: Decodable { let Page: AiringSchedulePage }
             let result = try await execute(
                 query: Queries.airingSchedule,
-                variables: ["page": AnyCodable(page), "airingAt_greater": AnyCodable(startOfDay), "airingAt_lesser": AnyCodable(endOfDay)],
+                variables: [
+                    "page": AnyCodable(page),
+                    "airingAfterExclusive": AnyCodable(bounds.queryLowerExclusive),
+                    "airingBeforeExclusive": AnyCodable(bounds.endExclusive),
+                ],
                 as: Response.self
             )
-            let filtered = result.Page.airingSchedules.filter { $0.media.isAdult != true }
+            let filtered = result.Page.airingSchedules.filter {
+                $0.airingAt >= bounds.startInclusive
+                    && $0.airingAt < bounds.endExclusive
+                    && $0.media.isAdult != true
+            }
             allSchedules.append(contentsOf: filtered)
             hasNextPage = result.Page.pageInfo.hasNextPage
             page += 1
@@ -290,13 +305,16 @@ actor AniListClient {
         var hasNextPage = true
 
         while hasNextPage && page <= 20 {
+            try Task.checkCancellation()
             struct Response: Decodable { let Studio: StudioDetails }
             let result = try await execute(
                 query: Queries.studio,
                 variables: ["id": AnyCodable(studioId), "page": AnyCodable(page)],
                 as: Response.self
             )
-            allMedia.append(contentsOf: result.Studio.media.edges.map(\.node))
+            let safeMedia = result.Studio.media.edges.map(\.node)
+                .filter { $0.isAdult != true }
+            allMedia.append(contentsOf: safeMedia)
             hasNextPage = result.Studio.media.pageInfo.hasNextPage
             page += 1
         }
@@ -308,48 +326,51 @@ actor AniListClient {
 
     // MARK: - Mutations
 
-    func updateProgress(mediaId: Int, progress: Int, accessToken: String) async throws {
-        struct Entry: Decodable { let id: Int; let progress: Int; let status: MediaListStatus }
-        struct Response: Decodable { let SaveMediaListEntry: Entry }
-        _ = try await execute(
+    func updateProgress(mediaId: Int, progress: Int, accessToken: String) async throws -> UserMediaEntry {
+        struct Response: Decodable { let SaveMediaListEntry: UserMediaEntry }
+        let result = try await execute(
             query: Mutations.updateProgress,
             variables: ["mediaId": AnyCodable(mediaId), "progress": AnyCodable(progress)],
             accessToken: accessToken,
             as: Response.self
         )
+        return result.SaveMediaListEntry
     }
 
-    func updateScore(mediaId: Int, score: Double, accessToken: String) async throws {
-        struct Entry: Decodable { let id: Int; let score: Double; let status: MediaListStatus }
-        struct Response: Decodable { let SaveMediaListEntry: Entry }
-        _ = try await execute(
+    func updateScore(mediaId: Int, score: Double, accessToken: String) async throws -> UserMediaEntry {
+        struct Response: Decodable { let SaveMediaListEntry: UserMediaEntry }
+        let result = try await execute(
             query: Mutations.updateScore,
             variables: ["mediaId": AnyCodable(mediaId), "score": AnyCodable(score)],
             accessToken: accessToken,
             as: Response.self
         )
+        return result.SaveMediaListEntry
     }
 
-    func updateStatus(mediaId: Int, status: MediaListStatus, accessToken: String) async throws {
-        struct Entry: Decodable { let id: Int; let status: MediaListStatus; let score: Double; let progress: Int }
-        struct Response: Decodable { let SaveMediaListEntry: Entry }
-        _ = try await execute(
+    func updateStatus(mediaId: Int, status: MediaListStatus, accessToken: String) async throws -> UserMediaEntry {
+        struct Response: Decodable { let SaveMediaListEntry: UserMediaEntry }
+        let result = try await execute(
             query: Mutations.updateStatus,
             variables: ["mediaId": AnyCodable(mediaId), "status": AnyCodable(status.rawValue)],
             accessToken: accessToken,
             as: Response.self
         )
+        return result.SaveMediaListEntry
     }
 
     func deleteMediaListEntry(entryId: Int, accessToken: String) async throws {
         struct Deleted: Decodable { let deleted: Bool }
         struct Response: Decodable { let DeleteMediaListEntry: Deleted }
-        _ = try await execute(
+        let result = try await execute(
             query: Mutations.deleteEntry,
             variables: ["id": AnyCodable(entryId)],
             accessToken: accessToken,
             as: Response.self
         )
+        guard result.DeleteMediaListEntry.deleted else {
+            throw AniListError.graphQLError("AniList did not delete the list entry")
+        }
     }
 
     func addToList(mediaId: Int, status: MediaListStatus, accessToken: String) async throws -> UserMediaEntry {
@@ -389,7 +410,7 @@ private enum Queries {
     static let mediaDetails = """
     query ($id: Int) {
       Media(id: $id) {
-        id title { romaji english native }
+        id isAdult title { romaji english native }
         coverImage { large medium } bannerImage
         description(asHtml: false)
         episodes chapters volumes format status
@@ -403,7 +424,7 @@ private enum Queries {
         type
         nextAiringEpisode { airingAt timeUntilAiring episode }
         relations { edges { relationType node {
-          id title { romaji english native }
+          id isAdult title { romaji english native }
           coverImage { large medium } format type status
         } } }
       }
@@ -452,7 +473,7 @@ private enum Queries {
           ... on ListActivity {
             id status progress createdAt
             media {
-              id title { romaji english native }
+              id isAdult title { romaji english native }
               coverImage { large medium }
               episodes chapters format status averageScore
             }
@@ -463,10 +484,10 @@ private enum Queries {
     """
 
     static let airingSchedule = """
-    query ($page: Int, $airingAt_greater: Int, $airingAt_lesser: Int) {
+    query ($page: Int, $airingAfterExclusive: Int, $airingBeforeExclusive: Int) {
       Page(page: $page, perPage: 50) {
         pageInfo { hasNextPage currentPage }
-        airingSchedules(airingAt_greater: $airingAt_greater, airingAt_lesser: $airingAt_lesser, sort: TIME) {
+        airingSchedules(airingAt_greater: $airingAfterExclusive, airingAt_lesser: $airingBeforeExclusive, sort: TIME) {
           id airingAt timeUntilAiring episode
           media {
             id isAdult title { romaji english native }
@@ -515,7 +536,7 @@ private enum Queries {
         media(sort: [START_DATE_DESC], page: $page, perPage: 50) {
           pageInfo { hasNextPage currentPage }
           edges { node {
-            id title { romaji english native }
+            id isAdult title { romaji english native }
             coverImage { large medium }
             episodes chapters format status averageScore
             startDate { year month day } type
@@ -529,13 +550,13 @@ private enum Queries {
 private enum Mutations {
     static let updateProgress = """
     mutation ($mediaId: Int, $progress: Int) {
-      SaveMediaListEntry(mediaId: $mediaId, progress: $progress) { id progress status }
+      SaveMediaListEntry(mediaId: $mediaId, progress: $progress) { id status score progress }
     }
     """
 
     static let updateScore = """
     mutation ($mediaId: Int, $score: Float) {
-      SaveMediaListEntry(mediaId: $mediaId, score: $score) { id score status }
+      SaveMediaListEntry(mediaId: $mediaId, score: $score) { id status score progress }
     }
     """
 
