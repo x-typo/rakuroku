@@ -31,6 +31,7 @@ struct ContentWarningView: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
+                .accessibilityHidden(true)
             Text(message)
                 .multilineTextAlignment(.leading)
         }
