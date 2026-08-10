@@ -10,8 +10,18 @@ final class AuthStore {
     private(set) var username: String
     private(set) var isLoading = true
     private(set) var authError: String?
+    private(set) var mediaLibraryRevision: UInt64 = 0
 
     var isAuthenticated: Bool { accessToken != nil }
+    var mediaLibrarySession: MediaLibrarySession {
+        MediaLibrarySession(
+            id: MediaLibrarySession.ID(
+                username: username.trimmingCharacters(in: .whitespacesAndNewlines),
+                revision: mediaLibraryRevision
+            ),
+            accessToken: accessToken
+        )
+    }
 
     private let tokenKey = "anilist_access_token"
     private let usernameKey = "anilist_username"
@@ -29,8 +39,11 @@ final class AuthStore {
     }
 
     func updateUsername(_ name: String) {
-        username = name
-        UserDefaults.standard.set(name, forKey: usernameKey)
+        let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard username != normalizedName else { return }
+        username = normalizedName
+        mediaLibraryRevision &+= 1
+        UserDefaults.standard.set(normalizedName, forKey: usernameKey)
     }
 
     func login() async {
@@ -120,9 +133,13 @@ final class AuthStore {
     }
 
     func logout(authError message: String? = nil) {
+        let identityChanged = accessToken != nil || username != defaultUsername
         KeychainHelper.delete(key: tokenKey)
         accessToken = nil
         username = defaultUsername
+        if identityChanged {
+            mediaLibraryRevision &+= 1
+        }
         authError = message
         UserDefaults.standard.removeObject(forKey: usernameKey)
     }
@@ -145,6 +162,9 @@ final class AuthStore {
         guard KeychainHelper.saveString(key: tokenKey, value: token) else {
             authError = "Couldn't save token securely."
             return false
+        }
+        if accessToken != token {
+            mediaLibraryRevision &+= 1
         }
         accessToken = token
         authError = nil

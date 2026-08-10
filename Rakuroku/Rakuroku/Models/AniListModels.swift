@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Enums
 
-enum MediaType: String, Codable, Sendable {
+enum MediaType: String, Codable, Hashable, Sendable {
     case anime = "ANIME"
     case manga = "MANGA"
 }

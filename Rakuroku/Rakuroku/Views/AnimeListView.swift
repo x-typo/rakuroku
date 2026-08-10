@@ -5,14 +5,11 @@ struct MediaListView: View {
     let type: MediaType
 
     @Environment(AuthStore.self) private var authStore
+    @Environment(MediaLibraryStore.self) private var mediaLibraryStore
 
-    @State private var entries: [MediaListEntry] = []
-    @State private var loading = true
-    @State private var error: String?
     @State private var searchQuery = ""
     @State private var selectedFilter: String
     @State private var showFilter = false
-    @State private var hasLoadedOnce = false
 
     private var filters: [String] {
         type == .anime
@@ -26,7 +23,7 @@ struct MediaListView: View {
     }
 
     private var filteredEntries: [MediaListEntry] {
-        var result = entries
+        var result = mediaLibraryStore.entries(for: type)
         if selectedFilter != "All" {
             let statusMap: [String: [MediaListStatus]] = [
                 "Watching": [.current], "Reading": [.current],
@@ -44,6 +41,8 @@ struct MediaListView: View {
     }
 
     var body: some View {
+        let libraryState = mediaLibraryStore.state(for: type)
+
         VStack(spacing: 0) {
             HStack {
                 Text(selectedFilter)
@@ -59,10 +58,19 @@ struct MediaListView: View {
             SearchBarView(text: $searchQuery)
                 .padding(.bottom, 8)
 
-            if loading {
+            if case .failed(let message) = libraryState.phase,
+               libraryState.hasUsableData {
+                ContentWarningView(message: "List refresh failed. \(message)")
+            }
+
+            if !libraryState.hasUsableData,
+               libraryState.phase == .idle || libraryState.phase == .loading {
                 ContentLoadingView()
-            } else if let error {
-                ContentErrorView(message: error) { Task { await loadData() } }
+            } else if case .failed(let message) = libraryState.phase,
+                      !libraryState.hasUsableData {
+                ContentErrorView(message: message) {
+                    Task { await loadData(force: true) }
+                }
             } else {
                 List {
                     if filteredEntries.isEmpty {
@@ -93,28 +101,20 @@ struct MediaListView: View {
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
-                .refreshable { await loadData() }
+                .refreshable { await loadData(force: true) }
             }
         }
         .background(Theme.background)
-        .task { await loadData() }
+        .task(id: authStore.mediaLibrarySession.id) { await loadData() }
         .sheet(isPresented: $showFilter) {
             let title = type == .anime ? "Anime List" : "Manga List"
             FilterSheet(title: title, filters: filters, selectedFilter: $selectedFilter)
         }
     }
 
-    private func loadData() async {
-        if !hasLoadedOnce { loading = true }
-        error = nil
-        do {
-            entries = try await AniListClient.shared.fetchMediaList(type: type, username: authStore.username, accessToken: authStore.accessToken)
-            hasLoadedOnce = true
-        } catch where error.isCancellation {
-        } catch {
-            self.error = error.localizedDescription
-        }
-        loading = false
+    private func loadData(force: Bool = false) async {
+        let session = authStore.mediaLibrarySession
+        await mediaLibraryStore.load(type, session: session, force: force)
     }
 }
 

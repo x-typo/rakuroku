@@ -5,12 +5,18 @@ struct StudioView: View {
     let studioName: String
 
     @Environment(AuthStore.self) private var authStore
+    @Environment(MediaLibraryStore.self) private var mediaLibraryStore
 
     @State private var media: [StudioMedia] = []
-    @State private var userStatusMap: [Int: MediaListStatus] = [:]
     @State private var loading = true
     @State private var error: String?
-    @State private var personalizationWarning: String?
+
+    private var personalizationWarning: String? {
+        if case .failed(let message) = mediaLibraryStore.state(for: .anime).phase {
+            return "List status unavailable. \(message)"
+        }
+        return nil
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -43,11 +49,12 @@ struct StudioView: View {
                     }
                     .padding(.bottom, 32)
                 }
-                .refreshable { await loadData() }
+                .refreshable { await refreshData() }
             }
         }
         .background(Theme.background)
         .task { await loadData() }
+        .task(id: authStore.mediaLibrarySession.id) { await loadLibrary() }
     }
 
     @ViewBuilder
@@ -57,7 +64,10 @@ struct StudioView: View {
         let format = Formatters.formatType(item.format)
         let epsText = item.type == .anime ? item.episodes.map { "\($0) eps" } ?? "" : ""
         let isUnreleased = item.status == "NOT_YET_RELEASED"
-        let userStatus = userStatusMap[item.id]
+        let libraryState = mediaLibraryStore.state(for: .anime)
+        let userStatus = libraryState.hasUsableData
+            ? mediaLibraryStore.status(mediaID: item.id, type: .anime)
+            : nil
 
         NavigationLink(value: MediaDetailDestination(mediaId: item.id)) {
             HStack(spacing: 0) {
@@ -104,45 +114,28 @@ struct StudioView: View {
     private func loadData() async {
         if media.isEmpty { loading = true }
         error = nil
-        personalizationWarning = nil
-        userStatusMap = [:]
         do {
-            async let studioData = AniListClient.shared.fetchStudioDetails(studioId: studioId)
-            let username = authStore.username.trimmingCharacters(in: .whitespacesAndNewlines)
-            async let animeList: [MediaListEntry]? = !username.isEmpty
-                ? AniListClient.shared.fetchMediaList(
-                    type: .anime,
-                    username: username,
-                    accessToken: authStore.accessToken
-                )
-                : nil
-
-            let s = try await studioData
+            let result = try await AniListClient.shared.fetchStudioDetails(studioId: studioId)
             try Task.checkCancellation()
-            media = s
+            media = result
             loading = false
-
-            do {
-                if let list = try await animeList {
-                    try Task.checkCancellation()
-                    userStatusMap = Dictionary(
-                        list.map { ($0.media.id, $0.status) },
-                        uniquingKeysWith: { _, latest in latest }
-                    )
-                }
-            } catch where error.isCancellation {
-                throw error
-            } catch AniListError.rateLimited {
-                userStatusMap = [:]
-                personalizationWarning = "List status unavailable. \(AniListError.rateLimited.localizedDescription)"
-            } catch {
-                userStatusMap = [:]
-                personalizationWarning = "List status unavailable. \(error.localizedDescription)"
-            }
         } catch where error.isCancellation {
+            return
         } catch {
             self.error = error.localizedDescription
+            loading = false
         }
-        loading = false
+    }
+
+    private func loadLibrary() async {
+        let session = authStore.mediaLibrarySession
+        await mediaLibraryStore.load(.anime, session: session)
+    }
+
+    private func refreshData() async {
+        let session = authStore.mediaLibrarySession
+        async let primaryLoad: Void = loadData()
+        async let libraryLoad: Void = mediaLibraryStore.load(.anime, session: session, force: true)
+        _ = await (primaryLoad, libraryLoad)
     }
 }

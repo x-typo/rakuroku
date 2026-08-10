@@ -3,16 +3,22 @@ import SwiftUI
 struct ScheduleView: View {
 
     @Environment(AuthStore.self) private var authStore
+    @Environment(MediaLibraryStore.self) private var mediaLibraryStore
 
     @State private var selectedDay = Calendar.current.component(.weekday, from: Date()) - 1
     @State private var schedules: [AiringSchedule] = []
-    @State private var userStatusMap: [Int: MediaListStatus]?
     @State private var loading = true
     @State private var error: String?
-    @State private var personalizationWarning: String?
 
     private let days = ["S", "M", "T", "W", "T", "F", "S"]
     private let weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+
+    private var personalizationWarning: String? {
+        if case .failed(let message) = mediaLibraryStore.state(for: .anime).phase {
+            return "List status unavailable. \(message)"
+        }
+        return nil
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -58,12 +64,14 @@ struct ScheduleView: View {
             if loading {
                 ContentLoadingView()
             } else if let error {
-                ContentErrorView(message: error) { Task { await loadData() } }
+                ContentErrorView(message: error) { Task { await refreshData() } }
             } else if schedules.isEmpty {
-                Spacer()
-                Text("No episodes airing this day")
-                    .foregroundStyle(Theme.textSecondary)
-                Spacer()
+                ScrollView {
+                    Text("No episodes airing this day")
+                        .foregroundStyle(Theme.textSecondary)
+                        .frame(maxWidth: .infinity, minHeight: 320)
+                }
+                .refreshable { await refreshData() }
             } else {
                 ScrollView {
                     LazyVStack(spacing: 12) {
@@ -73,17 +81,21 @@ struct ScheduleView: View {
                     }
                     .padding(16)
                 }
-                .refreshable { await loadData() }
+                .refreshable { await refreshData() }
             }
         }
         .background(Theme.background)
-        .task(id: selectedDay) { await loadData() }
+        .task(id: selectedDay) { await loadSchedule() }
+        .task(id: authStore.mediaLibrarySession.id) { await loadLibrary() }
     }
 
     @ViewBuilder
     private func scheduleRow(_ schedule: AiringSchedule) -> some View {
         let hasAired = Double(schedule.airingAt) < Date().timeIntervalSince1970
-        let userStatus = userStatusMap?[schedule.media.id]
+        let libraryState = mediaLibraryStore.state(for: .anime)
+        let userStatus = libraryState.hasUsableData
+            ? mediaLibraryStore.status(mediaID: schedule.media.id, type: .anime)
+            : nil
         let isHighlighted = userStatus == .current || userStatus == .completed
 
         NavigationLink(value: MediaDetailDestination(mediaId: schedule.media.id)) {
@@ -121,55 +133,37 @@ struct ScheduleView: View {
         .buttonStyle(.plain)
         .background(Theme.surface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .opacity(userStatusMap == nil || isHighlighted ? 1 : 0.5)
+        .opacity(!libraryState.hasUsableData || isHighlighted ? 1 : 0.5)
     }
 
-    private func loadData() async {
+    private func loadSchedule() async {
+        let requestedDay = selectedDay
         loading = true
         error = nil
-        personalizationWarning = nil
-        userStatusMap = nil
         do {
-            async let scheduleData = AniListClient.shared.fetchAiringSchedule(dayIndex: selectedDay)
-            let username = authStore.username.trimmingCharacters(in: .whitespacesAndNewlines)
-            async let animeList: [MediaListEntry]? = !username.isEmpty
-                ? AniListClient.shared.fetchMediaList(
-                    type: .anime,
-                    username: username,
-                    accessToken: authStore.accessToken
-                )
-                : nil
-
-            let s = try await scheduleData
+            let result = try await AniListClient.shared.fetchAiringSchedule(dayIndex: requestedDay)
             try Task.checkCancellation()
-            schedules = s
+            guard requestedDay == selectedDay else { return }
+            schedules = result
             loading = false
-
-            do {
-                let list = try await animeList
-                try Task.checkCancellation()
-                if let list {
-                    userStatusMap = Dictionary(
-                        list.map { ($0.media.id, $0.status) },
-                        uniquingKeysWith: { _, latest in latest }
-                    )
-                }
-            } catch where error.isCancellation {
-                throw error
-            } catch AniListError.rateLimited {
-                guard !Task.isCancelled else { return }
-                userStatusMap = nil
-                personalizationWarning = "List status unavailable. \(AniListError.rateLimited.localizedDescription)"
-            } catch {
-                guard !Task.isCancelled else { return }
-                userStatusMap = nil
-                personalizationWarning = "List status unavailable. \(error.localizedDescription)"
-            }
         } catch where error.isCancellation {
             return
         } catch {
+            guard requestedDay == selectedDay, !Task.isCancelled else { return }
             self.error = error.localizedDescription
+            loading = false
         }
-        loading = false
+    }
+
+    private func loadLibrary() async {
+        let session = authStore.mediaLibrarySession
+        await mediaLibraryStore.load(.anime, session: session)
+    }
+
+    private func refreshData() async {
+        let session = authStore.mediaLibrarySession
+        async let scheduleLoad: Void = loadSchedule()
+        async let libraryLoad: Void = mediaLibraryStore.load(.anime, session: session, force: true)
+        _ = await (scheduleLoad, libraryLoad)
     }
 }

@@ -13,12 +13,14 @@ struct RakurokuApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var authStore = AuthStore()
     @State private var anikotoTVStore = AnikotoTVStore()
+    @State private var mediaLibraryStore = MediaLibraryStore()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(authStore)
                 .environment(anikotoTVStore)
+                .environment(mediaLibraryStore)
                 .preferredColorScheme(.dark)
         }
     }
