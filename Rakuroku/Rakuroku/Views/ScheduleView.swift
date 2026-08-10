@@ -14,8 +14,11 @@ struct ScheduleView: View {
     private let weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
     private var personalizationWarning: String? {
-        if case .failed(let message) = mediaLibraryStore.state(for: .anime).phase {
-            return "List status unavailable. \(message)"
+        let libraryState = mediaLibraryStore.state(for: .anime)
+        if case .failed(let message) = libraryState.phase {
+            return libraryState.hasUsableData
+                ? "List refresh failed. \(message)"
+                : "List status unavailable. \(message)"
         }
         return nil
     }
