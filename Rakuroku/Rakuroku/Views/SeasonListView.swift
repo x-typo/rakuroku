@@ -47,7 +47,7 @@ struct SeasonListView: View {
             if loading {
                 ContentLoadingView()
             } else if let error {
-                ContentErrorView(message: error) { Task { await loadData() } }
+                ContentErrorView(message: error) { Task { await refreshData() } }
             } else {
                 ScrollView {
                     LazyVStack(spacing: 12) {

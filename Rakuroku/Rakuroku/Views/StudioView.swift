@@ -35,7 +35,7 @@ struct StudioView: View {
             if loading {
                 ContentLoadingView()
             } else if let error {
-                ContentErrorView(message: error) { Task { await loadData() } }
+                ContentErrorView(message: error) { Task { await refreshData() } }
             } else {
                 Text("\(media.count) productions")
                     .font(.subheadline)
