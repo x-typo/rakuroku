@@ -141,6 +141,10 @@ struct MediaCardView: View {
         .onChange(of: entry.progress) { _, newValue in
             localProgress = newValue
         }
+        .onChange(of: authStore.mediaLibrarySession.id) { _, currentSessionID in
+            localProgress = fallbackProgress(currentSessionID: currentSessionID)
+            updateError = nil
+        }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
             Button {
                 handleProgressChange(delta: 1)
@@ -203,29 +207,61 @@ struct MediaCardView: View {
                     progress: newProgress,
                     accessToken: token
                 )
-                guard authStore.mediaLibrarySession.id == session.id else { return }
+                let currentSessionID = authStore.mediaLibrarySession.id
+                guard currentSessionID == session.id else {
+                    localProgress = fallbackProgress(currentSessionID: currentSessionID)
+                    return
+                }
                 let reconciliation = mediaLibraryStore.reconcile(
                     updatedEntry,
                     mutation: mutation,
                     media: entry.media
                 )
                 guard reconciliation.shouldApplyLocally else {
-                    localProgress = mediaLibraryStore.entry(
-                        mediaID: entry.media.id,
-                        type: type
-                    )?.progress ?? entry.progress
+                    localProgress = fallbackProgress(currentSessionID: currentSessionID)
                     return
                 }
                 localProgress = updatedEntry.progress
             } catch where error.isCancellation {
+                localProgress = fallbackProgress(
+                    currentSessionID: authStore.mediaLibrarySession.id
+                )
             } catch {
-                guard authStore.mediaLibrarySession.id == session.id else { return }
-                localProgress = mediaLibraryStore.entry(
-                    mediaID: entry.media.id,
-                    type: type
-                )?.progress ?? previousProgress
+                let currentSessionID = authStore.mediaLibrarySession.id
+                guard currentSessionID == session.id else {
+                    localProgress = fallbackProgress(currentSessionID: currentSessionID)
+                    return
+                }
+                localProgress = fallbackProgress(currentSessionID: currentSessionID)
                 updateError = error.localizedDescription
             }
         }
+    }
+
+    private func fallbackProgress(currentSessionID: MediaLibrarySession.ID) -> Int {
+        MediaCardProgressResolution.fallbackProgress(
+            displayedProgress: entry.progress,
+            canonicalProgress: mediaLibraryStore.entry(
+                mediaID: entry.media.id,
+                type: type
+            )?.progress,
+            canonicalSessionID: mediaLibraryStore.state(for: type).snapshotSessionID,
+            currentSessionID: currentSessionID
+        )
+    }
+}
+
+enum MediaCardProgressResolution {
+    static func fallbackProgress(
+        displayedProgress: Int,
+        canonicalProgress: Int?,
+        canonicalSessionID: MediaLibrarySession.ID?,
+        currentSessionID: MediaLibrarySession.ID
+    ) -> Int {
+        guard canonicalSessionID == currentSessionID,
+              let canonicalProgress else {
+            return displayedProgress
+        }
+        return canonicalProgress
     }
 }

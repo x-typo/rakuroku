@@ -78,6 +78,37 @@ struct MediaLibraryStoreTests {
         ) == nil)
     }
 
+    @Test("Stale-session card mutation completion restores displayed progress")
+    func staleSessionCardMutationRestoresDisplayedProgress() {
+        let displayedSession = makeSession(username: "old", revision: 1).id
+        let currentSession = makeSession(username: "new", revision: 2).id
+
+        #expect(MediaCardProgressResolution.fallbackProgress(
+            displayedProgress: 4,
+            canonicalProgress: 9,
+            canonicalSessionID: displayedSession,
+            currentSessionID: currentSession
+        ) == 4)
+        #expect(MediaCardProgressResolution.fallbackProgress(
+            displayedProgress: 4,
+            canonicalProgress: nil,
+            canonicalSessionID: nil,
+            currentSessionID: currentSession
+        ) == 4)
+    }
+
+    @Test("Current-session card mutation failure restores canonical progress")
+    func currentSessionCardMutationRestoresCanonicalProgress() {
+        let currentSession = makeSession(revision: 3).id
+
+        #expect(MediaCardProgressResolution.fallbackProgress(
+            displayedProgress: 4,
+            canonicalProgress: 7,
+            canonicalSessionID: currentSession,
+            currentSessionID: currentSession
+        ) == 7)
+    }
+
     @Test("Known timestamps sort ahead of unknown timestamps deterministically")
     func optionalTimestampSortOrder() {
         let unknown = MediaListEntry(
