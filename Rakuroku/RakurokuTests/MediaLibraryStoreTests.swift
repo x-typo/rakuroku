@@ -15,6 +15,461 @@ struct MediaLibraryStoreTests {
         #expect(store.entries(for: .manga).isEmpty)
     }
 
+    @Test("Every saved status is emphasized while unsaved seasonal media is dimmed")
+    func seasonalMembershipAppearance() {
+        let activeSessionID = makeSession(username: "active", revision: 2).id
+        let staleSessionID = makeSession(username: "stale", revision: 1).id
+
+        for status in MediaListStatus.allCases {
+            #expect(MediaLibraryMembershipAppearance.opacity(
+                hasUsableData: true,
+                snapshotSessionID: activeSessionID,
+                activeSessionID: activeSessionID,
+                status: status
+            ) == 1)
+        }
+
+        #expect(MediaLibraryMembershipAppearance.opacity(
+            hasUsableData: true,
+            snapshotSessionID: activeSessionID,
+            activeSessionID: activeSessionID,
+            status: nil
+        ) == 0.5)
+        #expect(MediaLibraryMembershipAppearance.opacity(
+            hasUsableData: false,
+            snapshotSessionID: activeSessionID,
+            activeSessionID: activeSessionID,
+            status: nil
+        ) == 1)
+        #expect(MediaLibraryMembershipAppearance.opacity(
+            hasUsableData: true,
+            snapshotSessionID: nil,
+            activeSessionID: activeSessionID,
+            status: nil
+        ) == 1)
+        #expect(MediaLibraryMembershipAppearance.opacity(
+            hasUsableData: true,
+            snapshotSessionID: staleSessionID,
+            activeSessionID: activeSessionID,
+            status: nil
+        ) == 1)
+    }
+
+    @Test("Up Next requires a current snapshot and watching or rewatching status")
+    func upNextRequiresCurrentSnapshotAndEligibleStatus() {
+        let session = makeSession(username: "active", revision: 2)
+        let staleSession = makeSession(username: "stale", revision: 1)
+        let entries = MediaListStatus.allCases.enumerated().map { index, status in
+            makeEntry(
+                entryID: index + 1,
+                mediaID: 100 + index,
+                status: status,
+                progress: 0,
+                updatedAt: index,
+                mediaStatus: "RELEASING",
+                nextAiringEpisode: NextAiringEpisode(
+                    airingAt: 1_100,
+                    timeUntilAiring: 100,
+                    episode: 3
+                )
+            )
+        }
+
+        let items = MediaLibraryUpNext.items(
+            entries: entries,
+            hasUsableData: true,
+            snapshotSessionID: session.id,
+            activeSessionID: session.id,
+            nowEpoch: 1_000
+        )
+
+        #expect(Set(items.map(\.entry.status)) == Set([.current, .repeating]))
+        #expect(items.allSatisfy { $0.nextEpisode == 1 })
+        #expect(MediaLibraryUpNext.items(
+            entries: entries,
+            hasUsableData: false,
+            snapshotSessionID: session.id,
+            activeSessionID: session.id,
+            nowEpoch: 1_000
+        ).isEmpty)
+        #expect(MediaLibraryUpNext.items(
+            entries: entries,
+            hasUsableData: true,
+            snapshotSessionID: nil,
+            activeSessionID: session.id,
+            nowEpoch: 1_000
+        ).isEmpty)
+        #expect(MediaLibraryUpNext.items(
+            entries: entries,
+            hasUsableData: true,
+            snapshotSessionID: staleSession.id,
+            activeSessionID: session.id,
+            nowEpoch: 1_000
+        ).isEmpty)
+    }
+
+    @Test("Up Next exposes only episodes available at the injected time")
+    func upNextAvailabilityBoundaries() {
+        let session = makeSession()
+        let futureBoundary = makeEntry(
+            entryID: 1,
+            mediaID: 101,
+            progress: 3,
+            mediaStatus: "RELEASING",
+            nextAiringEpisode: NextAiringEpisode(
+                airingAt: 1_001,
+                timeUntilAiring: 1,
+                episode: 5
+            )
+        )
+        let currentBoundary = makeEntry(
+            entryID: 2,
+            mediaID: 102,
+            progress: 4,
+            mediaStatus: "RELEASING",
+            nextAiringEpisode: NextAiringEpisode(
+                airingAt: 1_000,
+                timeUntilAiring: 0,
+                episode: 5
+            )
+        )
+        let pastBoundary = makeEntry(
+            entryID: 3,
+            mediaID: 103,
+            progress: 4,
+            mediaStatus: "RELEASING",
+            nextAiringEpisode: NextAiringEpisode(
+                airingAt: 999,
+                timeUntilAiring: -1,
+                episode: 5
+            )
+        )
+        let finished = makeEntry(
+            entryID: 4,
+            mediaID: 104,
+            progress: 10,
+            episodes: 12,
+            mediaStatus: "FINISHED"
+        )
+        let excluded = [
+            makeEntry(
+                entryID: 5,
+                mediaID: 105,
+                progress: 0,
+                mediaStatus: "NOT_YET_RELEASED",
+                nextAiringEpisode: NextAiringEpisode(
+                    airingAt: 1_001,
+                    timeUntilAiring: 1,
+                    episode: 1
+                )
+            ),
+            makeEntry(
+                entryID: 6,
+                mediaID: 106,
+                progress: 4,
+                mediaStatus: "RELEASING",
+                nextAiringEpisode: NextAiringEpisode(
+                    airingAt: 1_001,
+                    timeUntilAiring: 1,
+                    episode: 5
+                )
+            ),
+            makeEntry(
+                entryID: 7,
+                mediaID: 107,
+                progress: 1,
+                episodes: 12,
+                mediaStatus: "RELEASING"
+            ),
+            makeEntry(
+                entryID: 8,
+                mediaID: 108,
+                progress: 1,
+                mediaStatus: "FINISHED"
+            ),
+            makeEntry(
+                entryID: 9,
+                mediaID: 109,
+                progress: 12,
+                episodes: 12,
+                mediaStatus: "FINISHED"
+            )
+        ]
+
+        let items = MediaLibraryUpNext.items(
+            entries: [futureBoundary, currentBoundary, pastBoundary, finished] + excluded,
+            hasUsableData: true,
+            snapshotSessionID: session.id,
+            activeSessionID: session.id,
+            nowEpoch: 1_000
+        )
+        let nextEpisodes = Dictionary(uniqueKeysWithValues: items.map {
+            ($0.entry.media.id, $0.nextEpisode)
+        })
+
+        #expect(nextEpisodes == [101: 4, 102: 5, 103: 5, 104: 11])
+    }
+
+    @Test("Up Next schedules refresh when a future episode becomes playable")
+    func upNextRefreshBoundary() {
+        let session = makeSession()
+        let boundaryEntry = makeEntry(
+            entryID: 1,
+            mediaID: 101,
+            progress: 4,
+            mediaStatus: "RELEASING",
+            nextAiringEpisode: NextAiringEpisode(
+                airingAt: 1_001,
+                timeUntilAiring: 1,
+                episode: 5
+            )
+        )
+
+        let refreshEpoch = MediaLibraryUpNext.nextRefreshEpoch(
+            entries: [boundaryEntry],
+            hasUsableData: true,
+            snapshotSessionID: session.id,
+            activeSessionID: session.id,
+            nowEpoch: 1_000
+        )
+        let beforeBoundary = MediaLibraryUpNext.items(
+            entries: [boundaryEntry],
+            hasUsableData: true,
+            snapshotSessionID: session.id,
+            activeSessionID: session.id,
+            nowEpoch: 1_000
+        )
+        let atBoundary = MediaLibraryUpNext.items(
+            entries: [boundaryEntry],
+            hasUsableData: true,
+            snapshotSessionID: session.id,
+            activeSessionID: session.id,
+            nowEpoch: refreshEpoch ?? 0
+        )
+
+        #expect(refreshEpoch == 1_001)
+        #expect(beforeBoundary.isEmpty)
+        #expect(atBoundary.map(\.nextEpisode) == [5])
+        #expect(MediaLibraryUpNext.nextRefreshEpoch(
+            entries: [boundaryEntry],
+            hasUsableData: true,
+            snapshotSessionID: session.id,
+            activeSessionID: session.id,
+            nowEpoch: 1_001
+        ) == nil)
+        #expect(MediaLibraryUpNext.nextRefreshEpoch(
+            entries: [boundaryEntry],
+            hasUsableData: true,
+            snapshotSessionID: nil,
+            activeSessionID: session.id,
+            nowEpoch: 1_000
+        ) == nil)
+    }
+
+    @Test("Up Next sorts by list recency and then media ID")
+    func upNextSortOrder() {
+        let session = makeSession()
+        let entries = [
+            makeEntry(
+                entryID: 1,
+                mediaID: 300,
+                progress: 0,
+                updatedAt: 20,
+                episodes: 12,
+                mediaStatus: "FINISHED"
+            ),
+            makeEntry(
+                entryID: 2,
+                mediaID: 200,
+                progress: 0,
+                updatedAt: 10,
+                episodes: 12,
+                mediaStatus: "FINISHED"
+            ),
+            makeEntry(
+                entryID: 3,
+                mediaID: 100,
+                progress: 0,
+                updatedAt: 20,
+                episodes: 12,
+                mediaStatus: "FINISHED"
+            )
+        ]
+
+        let items = MediaLibraryUpNext.items(
+            entries: entries,
+            hasUsableData: true,
+            snapshotSessionID: session.id,
+            activeSessionID: session.id,
+            nowEpoch: 1_000
+        )
+
+        #expect(items.map(\.entry.media.id) == [100, 300, 200])
+    }
+
+    @Test("Store Up Next derives only from the canonical anime state")
+    func upNextUsesAnimeStateOnly() async {
+        let client = ControlledMediaLibraryClient()
+        let store = MediaLibraryStore(client: client)
+        let session = makeSession()
+        let anime = makeEntry(
+            entryID: 1,
+            mediaID: 101,
+            progress: 1,
+            episodes: 12,
+            mediaStatus: "FINISHED"
+        )
+        let manga = makeEntry(
+            entryID: 2,
+            mediaID: 202,
+            progress: 1,
+            episodes: 12,
+            mediaStatus: "FINISHED"
+        )
+
+        await completeLoad(
+            store: store,
+            client: client,
+            type: .anime,
+            session: session,
+            entries: [anime]
+        )
+        await completeLoad(
+            store: store,
+            client: client,
+            type: .manga,
+            session: session,
+            entries: [manga]
+        )
+
+        let items = store.upNextItems(
+            activeSessionID: session.id,
+            nowEpoch: 1_000
+        )
+
+        #expect(items.map(\.entry.media.id) == [101])
+        #expect(items.map(\.nextEpisode) == [2])
+    }
+
+    @Test("Forced reload advances the Up Next airing schedule")
+    func forcedReloadAdvancesUpNextSchedule() async {
+        let client = ControlledMediaLibraryClient()
+        let store = MediaLibraryStore(client: client)
+        let session = makeSession()
+        let initial = makeEntry(
+            entryID: 1,
+            mediaID: 101,
+            progress: 4,
+            mediaStatus: "RELEASING",
+            nextAiringEpisode: NextAiringEpisode(
+                airingAt: 1_001,
+                timeUntilAiring: 1,
+                episode: 5
+            )
+        )
+
+        await completeLoad(
+            store: store,
+            client: client,
+            type: .anime,
+            session: session,
+            entries: [initial]
+        )
+        #expect(store.nextUpNextRefreshEpoch(
+            activeSessionID: session.id,
+            nowEpoch: 1_000
+        ) == 1_001)
+
+        let mutation = store.beginMutation(
+            mediaID: initial.media.id,
+            type: .anime,
+            sessionID: session.id
+        )
+        let result = store.reconcile(
+            makeUserEntry(
+                entryID: initial.id,
+                status: .current,
+                progress: 5,
+                score: 0,
+                updatedAt: 2
+            ),
+            mutation: mutation,
+            media: initial.media
+        )
+
+        #expect(result == .applied)
+        #expect(store.upNextItems(
+            activeSessionID: session.id,
+            nowEpoch: 1_001
+        ).isEmpty)
+        #expect(store.nextUpNextRefreshEpoch(
+            activeSessionID: session.id,
+            nowEpoch: 1_001
+        ) == nil)
+
+        let refreshed = makeEntry(
+            entryID: initial.id,
+            mediaID: initial.media.id,
+            progress: 5,
+            updatedAt: 3,
+            mediaStatus: "RELEASING",
+            nextAiringEpisode: NextAiringEpisode(
+                airingAt: 2_000,
+                timeUntilAiring: 999,
+                episode: 6
+            )
+        )
+        let reload = Task {
+            await store.load(.anime, session: session, force: true)
+        }
+        let request = await client.nextRequest()
+        await client.succeed(request, with: [refreshed])
+        await reload.value
+
+        #expect(store.nextUpNextRefreshEpoch(
+            activeSessionID: session.id,
+            nowEpoch: 1_001
+        ) == 2_000)
+    }
+
+    @Test("Home season loads apply only the latest request")
+    func homeSeasonLoadsApplyOnlyLatestRequest() {
+        var tracker = HomeSeasonLoadTracker()
+
+        let first = tracker.begin()
+        #expect(tracker.isCurrent(first))
+
+        let second = tracker.begin()
+        #expect(!tracker.isCurrent(first))
+        #expect(tracker.isCurrent(second))
+    }
+
+    @Test("Home reloads Up Next only after a missed airing boundary")
+    func homeReloadsUpNextAfterMissedBoundary() {
+        #expect(!HomeUpNextRefreshPolicy.shouldReloadAfterActivation(
+            scheduledRefreshEpoch: nil,
+            nowEpoch: 1_000
+        ))
+        #expect(!HomeUpNextRefreshPolicy.shouldReloadAfterActivation(
+            scheduledRefreshEpoch: 1_001,
+            nowEpoch: 1_000
+        ))
+        #expect(HomeUpNextRefreshPolicy.shouldReloadAfterActivation(
+            scheduledRefreshEpoch: 1_000,
+            nowEpoch: 1_000
+        ))
+        #expect(HomeUpNextRefreshPolicy.shouldReloadAfterActivation(
+            scheduledRefreshEpoch: 999,
+            nowEpoch: 1_000
+        ))
+        #expect(HomeUpNextRefreshPolicy.shouldAdvanceAfterScheduledLoad(
+            phase: .loaded
+        ))
+        #expect(!HomeUpNextRefreshPolicy.shouldAdvanceAfterScheduledLoad(
+            phase: .failed(message: "Offline")
+        ))
+    }
+
     @Test("Successful load preserves order and indexes by media ID")
     func successfulLoad() async {
         let client = ControlledMediaLibraryClient()
@@ -987,7 +1442,10 @@ struct MediaLibraryStoreTests {
         status: MediaListStatus = .current,
         progress: Int = 0,
         score: Double = 0,
-        updatedAt: Int? = nil
+        updatedAt: Int? = nil,
+        episodes: Int? = nil,
+        mediaStatus: String? = nil,
+        nextAiringEpisode: NextAiringEpisode? = nil
     ) -> MediaListEntry {
         MediaListEntry(
             id: entryID,
@@ -995,7 +1453,12 @@ struct MediaLibraryStoreTests {
             progress: progress,
             score: score,
             updatedAt: updatedAt ?? entryID,
-            media: makeMedia(mediaID: mediaID)
+            media: makeMedia(
+                mediaID: mediaID,
+                episodes: episodes,
+                status: mediaStatus,
+                nextAiringEpisode: nextAiringEpisode
+            )
         )
     }
 
@@ -1015,18 +1478,23 @@ struct MediaLibraryStoreTests {
         )
     }
 
-    private func makeMedia(mediaID: Int) -> Media {
+    private func makeMedia(
+        mediaID: Int,
+        episodes: Int? = nil,
+        status: String? = nil,
+        nextAiringEpisode: NextAiringEpisode? = nil
+    ) -> Media {
         Media(
             id: mediaID,
             isAdult: false,
             title: MediaTitle(romaji: "Title \(mediaID)", english: nil, native: nil),
             coverImage: nil,
-            episodes: nil,
+            episodes: episodes,
             chapters: nil,
             format: nil,
-            status: nil,
+            status: status,
             averageScore: nil,
-            nextAiringEpisode: nil
+            nextAiringEpisode: nextAiringEpisode
         )
     }
 }
