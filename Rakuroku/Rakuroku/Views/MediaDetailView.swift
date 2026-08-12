@@ -1,28 +1,70 @@
 import SwiftUI
 
 struct MediaDetailView: View {
+    private struct LoadID: Hashable {
+        let mediaID: Int
+        let sessionID: MediaLibrarySession.ID
+    }
+
     private enum EntryMutation: Equatable {
         case score
         case status
         case progress
     }
 
+    private struct ActiveEntryMutation: Equatable {
+        let id = UUID()
+        let kind: EntryMutation
+        let loadID: LoadID
+        let type: MediaType
+        let media: Media
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.id == rhs.id
+        }
+    }
+
+    private struct MutationContext {
+        let session: MediaLibrarySession
+        let loadID: LoadID
+        let accessToken: String
+    }
+
     let mediaId: Int
 
     @Environment(AuthStore.self) private var authStore
+    @Environment(MediaLibraryStore.self) private var mediaLibraryStore
 
     @State private var media: MediaDetails?
     @State private var userEntry: UserMediaEntry?
     @State private var entryLookupFailed = false
+    @State private var loadedID: LoadID?
     @State private var loading = true
     @State private var error: String?
 
     @State private var showScoreModal = false
     @State private var showStatusModal = false
     @State private var showProgressModal = false
-    @State private var entryMutation: EntryMutation?
+    @State private var entryMutation: ActiveEntryMutation?
     @State private var mutationError: String?
     @State private var showDeleteConfirmation = false
+
+    private var mutationContext: MutationContext? {
+        let session = authStore.mediaLibrarySession
+        let currentLoadID = LoadID(mediaID: mediaId, sessionID: session.id)
+        guard loadedID == currentLoadID,
+              let accessToken = MediaLibraryMutationAuthorization.accessToken(
+                  displayedSessionID: loadedID?.sessionID,
+                  currentSession: session
+              ) else {
+            return nil
+        }
+        return MutationContext(
+            session: session,
+            loadID: currentLoadID,
+            accessToken: accessToken
+        )
+    }
 
     var body: some View {
         Group {
@@ -41,7 +83,7 @@ struct MediaDetailView: View {
             }
         }
         .background(Theme.background)
-        .task(id: mediaId) {
+        .task(id: LoadID(mediaID: mediaId, sessionID: authStore.mediaLibrarySession.id)) {
             await loadData()
         }
     }
@@ -51,7 +93,7 @@ struct MediaDetailView: View {
         let title = media.title.display
         let studio = Formatters.mainStudio(media.studios)
         let userStatus = userEntry?.status
-        let canEditScore = authStore.isAuthenticated && userEntry != nil && !entryLookupFailed
+        let canEditScore = mutationContext != nil && userEntry != nil && !entryLookupFailed
 
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
@@ -84,7 +126,7 @@ struct MediaDetailView: View {
                             .foregroundStyle(Theme.textPrimary)
                             .lineLimit(3)
 
-                        if authStore.isAuthenticated, userEntry == nil, !entryLookupFailed {
+                        if mutationContext != nil, userEntry == nil, !entryLookupFailed {
                             Button("Add") { showStatusModal = true }
                                 .font(.callout.weight(.semibold))
                                 .foregroundStyle(Theme.textPrimary)
@@ -247,7 +289,7 @@ struct MediaDetailView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
-        .disabled(entryMutation != nil)
+        .disabled(entryMutation != nil || mutationContext == nil)
         .padding(.horizontal, 16)
         .padding(.top, 12)
     }
@@ -360,12 +402,12 @@ struct MediaDetailView: View {
                             }
                         }
                     }
-                    .disabled(entryMutation != nil)
+                    .disabled(entryMutation != nil || mutationContext == nil)
                 }
             }
             .padding(.horizontal, 16)
 
-            if entryMutation == .score { ProgressView().tint(Theme.primary) }
+            if entryMutation?.kind == .score { ProgressView().tint(Theme.primary) }
         }
         .padding(.top, 40)
         .padding(.bottom, 20)
@@ -429,7 +471,7 @@ struct MediaDetailView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                 }
-                .disabled(entryMutation != nil)
+                .disabled(entryMutation != nil || mutationContext == nil)
             }
             if userEntry != nil {
                 Button(role: .destructive) {
@@ -439,9 +481,9 @@ struct MediaDetailView: View {
                         .foregroundStyle(Theme.error)
                         .padding(.vertical, 12)
                 }
-                .disabled(entryMutation != nil)
+                .disabled(entryMutation != nil || mutationContext == nil)
             }
-            if entryMutation == .status { ProgressView().tint(Theme.primary) }
+            if entryMutation?.kind == .status { ProgressView().tint(Theme.primary) }
         }
         .presentationDetents([.medium])
         .presentationDragIndicator(.visible)
@@ -498,8 +540,8 @@ struct MediaDetailView: View {
                         .background(Theme.error)
                         .clipShape(Circle())
                 }
-                .disabled(progress <= 0 || entryMutation != nil)
-                .opacity(progress <= 0 || entryMutation != nil ? 0.4 : 1)
+                .disabled(progress <= 0 || entryMutation != nil || mutationContext == nil)
+                .opacity(progress <= 0 || entryMutation != nil || mutationContext == nil ? 0.4 : 1)
                 .accessibilityLabel("Decrease progress")
 
                 Button {
@@ -512,12 +554,12 @@ struct MediaDetailView: View {
                         .background(Theme.primary)
                         .clipShape(Circle())
                 }
-                .disabled(total.map { progress >= $0 } ?? false || entryMutation != nil)
-                .opacity(total.map { progress >= $0 } ?? false || entryMutation != nil ? 0.4 : 1)
+                .disabled(total.map { progress >= $0 } ?? false || entryMutation != nil || mutationContext == nil)
+                .opacity(total.map { progress >= $0 } ?? false || entryMutation != nil || mutationContext == nil ? 0.4 : 1)
                 .accessibilityLabel("Increase progress")
             }
 
-            if entryMutation == .progress { ProgressView().tint(Theme.primary) }
+            if entryMutation?.kind == .progress { ProgressView().tint(Theme.primary) }
         }
         .padding(24)
         .presentationDetents([.height(320)])
@@ -528,116 +570,330 @@ struct MediaDetailView: View {
     // MARK: - Actions
 
     private func loadData() async {
-        if media == nil { loading = true }
+        let session = authStore.mediaLibrarySession
+        let loadID = LoadID(mediaID: mediaId, sessionID: session.id)
+        if loadedID != loadID {
+            loadedID = nil
+            userEntry = nil
+            entryLookupFailed = false
+            entryMutation = nil
+            mutationError = nil
+            loading = true
+        } else if media == nil {
+            loading = true
+        }
         error = nil
         do {
             let details = try await AniListClient.shared.fetchMediaDetails(id: mediaId)
+            try Task.checkCancellation()
+            guard authStore.mediaLibrarySession.id == session.id else { return }
             media = details
             entryLookupFailed = false
             do {
-                userEntry = try await AniListClient.shared.fetchUserMediaEntry(
+                let entry = try await AniListClient.shared.fetchUserMediaEntry(
                     mediaId: mediaId,
-                    username: authStore.username,
-                    accessToken: authStore.accessToken
+                    username: session.id.username,
+                    accessToken: session.accessToken
                 )
+                try Task.checkCancellation()
+                guard authStore.mediaLibrarySession.id == session.id else { return }
+                userEntry = entry
+                loadedID = loadID
             } catch where error.isCancellation {
                 throw error
             } catch {
+                guard authStore.mediaLibrarySession.id == session.id else { return }
                 userEntry = nil
                 entryLookupFailed = true
                 mutationError = error.localizedDescription
+                loadedID = loadID
             }
         } catch where error.isCancellation {
         } catch {
+            guard authStore.mediaLibrarySession.id == session.id else { return }
             self.error = error.localizedDescription
+            loadedID = loadID
         }
+        guard authStore.mediaLibrarySession.id == session.id else { return }
         loading = false
     }
 
     private func handleScoreUpdate(_ score: Double) async {
-        guard entryMutation == nil, let token = authStore.accessToken, userEntry != nil else { return }
-        entryMutation = .score
+        guard let context = mutationContext,
+              entryMutation == nil,
+              userEntry != nil,
+              let details = media,
+              let type = details.type else {
+            return
+        }
+        let mutation = mediaLibraryStore.beginMutation(
+            mediaID: mediaId,
+            type: type,
+            sessionID: context.session.id
+        )
+        let activeMutation = ActiveEntryMutation(
+            kind: .score,
+            loadID: context.loadID,
+            type: type,
+            media: details.libraryMedia
+        )
+        entryMutation = activeMutation
         mutationError = nil
+        defer { finishEntryMutation(activeMutation) }
         do {
-            userEntry = try await AniListClient.shared.updateScore(
+            let updatedEntry = try await AniListClient.shared.updateScore(
                 mediaId: mediaId,
                 score: score,
-                accessToken: token
+                accessToken: context.accessToken
             )
+            guard applySuccessfulMutation(updatedEntry, mutation: mutation, activeMutation: activeMutation) else { return }
             showScoreModal = false
         } catch where error.isCancellation {
         } catch {
+            guard authStore.mediaLibrarySession.id == activeMutation.loadID.sessionID,
+                  loadedID == activeMutation.loadID else { return }
             mutationError = error.localizedDescription
         }
-        entryMutation = nil
     }
 
     private func handleStatusUpdate(_ status: MediaListStatus) async {
-        guard entryMutation == nil, let token = authStore.accessToken, userEntry != nil else { return }
-        entryMutation = .status
+        guard let context = mutationContext,
+              entryMutation == nil,
+              userEntry != nil,
+              let details = media,
+              let type = details.type else {
+            return
+        }
+        let mutation = mediaLibraryStore.beginMutation(
+            mediaID: mediaId,
+            type: type,
+            sessionID: context.session.id
+        )
+        let activeMutation = ActiveEntryMutation(
+            kind: .status,
+            loadID: context.loadID,
+            type: type,
+            media: details.libraryMedia
+        )
+        entryMutation = activeMutation
         mutationError = nil
+        defer { finishEntryMutation(activeMutation) }
         do {
-            userEntry = try await AniListClient.shared.updateStatus(
+            let updatedEntry = try await AniListClient.shared.updateStatus(
                 mediaId: mediaId,
                 status: status,
-                accessToken: token
+                accessToken: context.accessToken
             )
+            guard applySuccessfulMutation(updatedEntry, mutation: mutation, activeMutation: activeMutation) else { return }
             showStatusModal = false
         } catch where error.isCancellation {
         } catch {
+            guard authStore.mediaLibrarySession.id == activeMutation.loadID.sessionID,
+                  loadedID == activeMutation.loadID else { return }
             mutationError = error.localizedDescription
         }
-        entryMutation = nil
     }
 
     private func handleDeleteEntry() async {
-        guard entryMutation == nil, let token = authStore.accessToken, let entry = userEntry else { return }
-        entryMutation = .status
+        guard let context = mutationContext,
+              entryMutation == nil,
+              let entry = userEntry,
+              let details = media,
+              let type = details.type else {
+            return
+        }
+        let mutation = mediaLibraryStore.beginMutation(
+            mediaID: mediaId,
+            type: type,
+            sessionID: context.session.id
+        )
+        let activeMutation = ActiveEntryMutation(
+            kind: .status,
+            loadID: context.loadID,
+            type: type,
+            media: details.libraryMedia
+        )
+        entryMutation = activeMutation
         mutationError = nil
+        defer { finishEntryMutation(activeMutation) }
         do {
-            try await AniListClient.shared.deleteMediaListEntry(entryId: entry.id, accessToken: token)
-            userEntry = nil
+            try await AniListClient.shared.deleteMediaListEntry(
+                entryId: entry.id,
+                accessToken: context.accessToken
+            )
+            guard authStore.mediaLibrarySession.id == activeMutation.loadID.sessionID else { return }
+            let reconciliation = mediaLibraryStore.reconcileDeletion(
+                entryID: entry.id,
+                mutation: mutation
+            )
+            guard loadedID == activeMutation.loadID else { return }
+            userEntry = MediaDetailMutationResolution.afterDeletion(
+                reconciliation: reconciliation,
+                canonicalEntry: mediaLibraryStore.entry(
+                    mediaID: activeMutation.loadID.mediaID,
+                    type: activeMutation.type
+                )
+            )
+            guard reconciliation.shouldApplyLocally else { return }
             showStatusModal = false
         } catch where error.isCancellation {
         } catch {
+            guard authStore.mediaLibrarySession.id == activeMutation.loadID.sessionID,
+                  loadedID == activeMutation.loadID else { return }
             mutationError = error.localizedDescription
         }
-        entryMutation = nil
     }
 
     private func handleAddToList(_ status: MediaListStatus) async {
-        guard entryMutation == nil, let token = authStore.accessToken else { return }
-        entryMutation = .status
+        guard let context = mutationContext,
+              entryMutation == nil,
+              let details = media,
+              let type = details.type else {
+            return
+        }
+        let mutation = mediaLibraryStore.beginMutation(
+            mediaID: mediaId,
+            type: type,
+            sessionID: context.session.id
+        )
+        let activeMutation = ActiveEntryMutation(
+            kind: .status,
+            loadID: context.loadID,
+            type: type,
+            media: details.libraryMedia
+        )
+        entryMutation = activeMutation
         mutationError = nil
+        defer { finishEntryMutation(activeMutation) }
         do {
-            let entry = try await AniListClient.shared.addToList(mediaId: mediaId, status: status, accessToken: token)
-            userEntry = entry
+            let entry = try await AniListClient.shared.addToList(
+                mediaId: mediaId,
+                status: status,
+                accessToken: context.accessToken
+            )
+            guard applySuccessfulMutation(entry, mutation: mutation, activeMutation: activeMutation) else { return }
             showStatusModal = false
         } catch where error.isCancellation {
         } catch {
+            guard authStore.mediaLibrarySession.id == activeMutation.loadID.sessionID,
+                  loadedID == activeMutation.loadID else { return }
             mutationError = error.localizedDescription
         }
-        entryMutation = nil
     }
 
     private func handleProgressUpdate(delta: Int) async {
-        guard entryMutation == nil, let token = authStore.accessToken, let entry = userEntry else { return }
-        let total = media?.type == .anime ? media?.episodes : media?.chapters
+        guard let context = mutationContext,
+              entryMutation == nil,
+              let entry = userEntry,
+              let details = media,
+              let type = details.type else {
+            return
+        }
+        let total = type == .anime ? details.episodes : details.chapters
         let newProgress = max(0, entry.progress + delta)
         if let total, newProgress > total { return }
 
-        entryMutation = .progress
+        let mutation = mediaLibraryStore.beginMutation(
+            mediaID: mediaId,
+            type: type,
+            sessionID: context.session.id
+        )
+        let activeMutation = ActiveEntryMutation(
+            kind: .progress,
+            loadID: context.loadID,
+            type: type,
+            media: details.libraryMedia
+        )
+        entryMutation = activeMutation
         mutationError = nil
+        defer { finishEntryMutation(activeMutation) }
         do {
-            userEntry = try await AniListClient.shared.updateProgress(
+            let updatedEntry = try await AniListClient.shared.updateProgress(
                 mediaId: mediaId,
                 progress: newProgress,
-                accessToken: token
+                accessToken: context.accessToken
             )
+            guard applySuccessfulMutation(updatedEntry, mutation: mutation, activeMutation: activeMutation) else { return }
         } catch where error.isCancellation {
         } catch {
+            guard authStore.mediaLibrarySession.id == activeMutation.loadID.sessionID,
+                  loadedID == activeMutation.loadID else { return }
             mutationError = error.localizedDescription
         }
+    }
+
+    @discardableResult
+    private func applySuccessfulMutation(
+        _ entry: UserMediaEntry,
+        mutation: MediaLibraryMutation,
+        activeMutation: ActiveEntryMutation
+    ) -> Bool {
+        guard authStore.mediaLibrarySession.id == activeMutation.loadID.sessionID else { return false }
+        let reconciliation = mediaLibraryStore.reconcile(
+            entry,
+            mutation: mutation,
+            media: activeMutation.media
+        )
+        guard loadedID == activeMutation.loadID else { return false }
+        userEntry = MediaDetailMutationResolution.afterUpdate(
+            entry,
+            reconciliation: reconciliation,
+            canonicalEntry: mediaLibraryStore.entry(
+                mediaID: activeMutation.loadID.mediaID,
+                type: activeMutation.type
+            )
+        )
+        return reconciliation.shouldApplyLocally
+    }
+
+    private func finishEntryMutation(_ mutation: ActiveEntryMutation) {
+        guard entryMutation?.id == mutation.id else { return }
         entryMutation = nil
+    }
+}
+
+enum MediaDetailMutationResolution {
+    static func afterUpdate(
+        _ successfulEntry: UserMediaEntry,
+        reconciliation: MediaLibraryReconciliationResult,
+        canonicalEntry: MediaListEntry?
+    ) -> UserMediaEntry? {
+        guard !reconciliation.shouldApplyLocally else { return successfulEntry }
+        return canonicalEntry.map { makeUserEntry(from: $0) }
+    }
+
+    static func afterDeletion(
+        reconciliation: MediaLibraryReconciliationResult,
+        canonicalEntry: MediaListEntry?
+    ) -> UserMediaEntry? {
+        guard !reconciliation.shouldApplyLocally else { return nil }
+        return canonicalEntry.map { makeUserEntry(from: $0) }
+    }
+
+    private static func makeUserEntry(from entry: MediaListEntry) -> UserMediaEntry {
+        UserMediaEntry(
+            id: entry.id,
+            status: entry.status,
+            score: entry.score,
+            progress: entry.progress,
+            updatedAt: entry.updatedAt
+        )
+    }
+}
+
+private extension MediaDetails {
+    var libraryMedia: Media {
+        Media(
+            id: id,
+            isAdult: isAdult,
+            title: title,
+            coverImage: coverImage,
+            episodes: episodes,
+            chapters: chapters,
+            format: format,
+            status: status,
+            averageScore: averageScore,
+            nextAiringEpisode: nextAiringEpisode
+        )
     }
 }

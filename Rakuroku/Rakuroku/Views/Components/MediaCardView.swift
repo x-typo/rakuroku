@@ -3,16 +3,30 @@ import SwiftUI
 struct MediaCardView: View {
     let entry: MediaListEntry
     let type: MediaType
+    let snapshotSessionID: MediaLibrarySession.ID?
 
     @Environment(AuthStore.self) private var authStore
+    @Environment(MediaLibraryStore.self) private var mediaLibraryStore
     @State private var localProgress: Int
     @State private var isUpdating = false
     @State private var updateError: String?
 
-    init(entry: MediaListEntry, type: MediaType) {
+    init(
+        entry: MediaListEntry,
+        type: MediaType,
+        snapshotSessionID: MediaLibrarySession.ID?
+    ) {
         self.entry = entry
         self.type = type
+        self.snapshotSessionID = snapshotSessionID
         self._localProgress = State(initialValue: entry.progress)
+    }
+
+    private var canMutateCurrentSession: Bool {
+        MediaLibraryMutationAuthorization.accessToken(
+            displayedSessionID: snapshotSessionID,
+            currentSession: authStore.mediaLibrarySession
+        ) != nil
     }
 
     private var total: Int? {
@@ -127,6 +141,10 @@ struct MediaCardView: View {
         .onChange(of: entry.progress) { _, newValue in
             localProgress = newValue
         }
+        .onChange(of: authStore.mediaLibrarySession.id) { _, currentSessionID in
+            localProgress = fallbackProgress(currentSessionID: currentSessionID)
+            updateError = nil
+        }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
             Button {
                 handleProgressChange(delta: 1)
@@ -134,7 +152,7 @@ struct MediaCardView: View {
                 Label("+1", systemImage: "plus.circle.fill")
             }
             .tint(Theme.primary)
-            .disabled(!canIncrement || isUpdating)
+            .disabled(!canIncrement || isUpdating || !canMutateCurrentSession)
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button {
@@ -143,7 +161,7 @@ struct MediaCardView: View {
                 Label("-1", systemImage: "minus.circle.fill")
             }
             .tint(Theme.error)
-            .disabled(!canDecrement || isUpdating)
+            .disabled(!canDecrement || isUpdating || !canMutateCurrentSession)
         }
         .alert("Update Failed", isPresented: Binding(get: { updateError != nil }, set: { if !$0 { updateError = nil } })) {
             Button("OK") { updateError = nil }
@@ -154,8 +172,14 @@ struct MediaCardView: View {
 
     private func handleProgressChange(delta: Int) {
         guard !isUpdating else { return }
-        guard let token = authStore.accessToken else {
-            updateError = "Sign in to AniList to update progress."
+        let session = authStore.mediaLibrarySession
+        guard let token = MediaLibraryMutationAuthorization.accessToken(
+            displayedSessionID: snapshotSessionID,
+            currentSession: session
+        ) else {
+            updateError = session.accessToken == nil
+                ? "Sign in to AniList to update progress."
+                : "Wait for your AniList library to finish refreshing."
             return
         }
         let previousProgress = localProgress
@@ -166,24 +190,78 @@ struct MediaCardView: View {
             max(unclampedProgress, 0)
         }
         guard newProgress != previousProgress else { return }
+        let mutation = mediaLibraryStore.beginMutation(
+            mediaID: entry.media.id,
+            type: type,
+            sessionID: session.id
+        )
         isUpdating = true
         updateError = nil
         localProgress = newProgress
 
         Task { @MainActor in
+            defer { isUpdating = false }
             do {
                 let updatedEntry = try await AniListClient.shared.updateProgress(
                     mediaId: entry.media.id,
                     progress: newProgress,
                     accessToken: token
                 )
+                let currentSessionID = authStore.mediaLibrarySession.id
+                guard currentSessionID == session.id else {
+                    localProgress = fallbackProgress(currentSessionID: currentSessionID)
+                    return
+                }
+                let reconciliation = mediaLibraryStore.reconcile(
+                    updatedEntry,
+                    mutation: mutation,
+                    media: entry.media
+                )
+                guard reconciliation.shouldApplyLocally else {
+                    localProgress = fallbackProgress(currentSessionID: currentSessionID)
+                    return
+                }
                 localProgress = updatedEntry.progress
             } catch where error.isCancellation {
+                localProgress = fallbackProgress(
+                    currentSessionID: authStore.mediaLibrarySession.id
+                )
             } catch {
-                localProgress = previousProgress
+                let currentSessionID = authStore.mediaLibrarySession.id
+                guard currentSessionID == session.id else {
+                    localProgress = fallbackProgress(currentSessionID: currentSessionID)
+                    return
+                }
+                localProgress = fallbackProgress(currentSessionID: currentSessionID)
                 updateError = error.localizedDescription
             }
-            isUpdating = false
         }
+    }
+
+    private func fallbackProgress(currentSessionID: MediaLibrarySession.ID) -> Int {
+        MediaCardProgressResolution.fallbackProgress(
+            displayedProgress: entry.progress,
+            canonicalProgress: mediaLibraryStore.entry(
+                mediaID: entry.media.id,
+                type: type
+            )?.progress,
+            canonicalSessionID: mediaLibraryStore.state(for: type).snapshotSessionID,
+            currentSessionID: currentSessionID
+        )
+    }
+}
+
+enum MediaCardProgressResolution {
+    static func fallbackProgress(
+        displayedProgress: Int,
+        canonicalProgress: Int?,
+        canonicalSessionID: MediaLibrarySession.ID?,
+        currentSessionID: MediaLibrarySession.ID
+    ) -> Int {
+        guard canonicalSessionID == currentSessionID,
+              let canonicalProgress else {
+            return displayedProgress
+        }
+        return canonicalProgress
     }
 }

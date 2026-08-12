@@ -32,6 +32,700 @@ struct MediaLibraryStoreTests {
         #expect(store.entries(for: .anime).map(\.media.id) == [202, 101])
         #expect(store.entry(mediaID: 101, type: .anime)?.id == first.id)
         #expect(store.status(mediaID: 202, type: .anime) == .completed)
+        #expect(store.state(for: .anime).snapshotSessionID == session.id)
+    }
+
+    @Test("Nullable mutation timestamps decode safely")
+    func nullableMutationTimestampDecodes() throws {
+        let data = Data(#"{"id":1,"status":"CURRENT","score":7,"progress":4,"updatedAt":null}"#.utf8)
+
+        let entry = try JSONDecoder().decode(UserMediaEntry.self, from: data)
+
+        #expect(entry.id == 1)
+        #expect(entry.updatedAt == nil)
+    }
+
+    @Test("Mutation authorization requires matching displayed-session provenance")
+    func mutationAuthorizationRequiresMatchingSession() {
+        let currentSession = makeSession(username: "current", revision: 3, accessToken: "current-token")
+        let wrongUsername = makeSession(username: "other", revision: 3).id
+        let wrongRevision = makeSession(username: "current", revision: 2).id
+        let signedOutSession = makeSession(
+            username: "current",
+            revision: 3,
+            accessToken: nil
+        )
+
+        #expect(MediaLibraryMutationAuthorization.accessToken(
+            displayedSessionID: currentSession.id,
+            currentSession: currentSession
+        ) == "current-token")
+        #expect(MediaLibraryMutationAuthorization.accessToken(
+            displayedSessionID: wrongUsername,
+            currentSession: currentSession
+        ) == nil)
+        #expect(MediaLibraryMutationAuthorization.accessToken(
+            displayedSessionID: wrongRevision,
+            currentSession: currentSession
+        ) == nil)
+        #expect(MediaLibraryMutationAuthorization.accessToken(
+            displayedSessionID: nil,
+            currentSession: currentSession
+        ) == nil)
+        #expect(MediaLibraryMutationAuthorization.accessToken(
+            displayedSessionID: signedOutSession.id,
+            currentSession: signedOutSession
+        ) == nil)
+    }
+
+    @Test("Stale-session card mutation completion restores displayed progress")
+    func staleSessionCardMutationRestoresDisplayedProgress() {
+        let displayedSession = makeSession(username: "old", revision: 1).id
+        let currentSession = makeSession(username: "new", revision: 2).id
+
+        #expect(MediaCardProgressResolution.fallbackProgress(
+            displayedProgress: 4,
+            canonicalProgress: 9,
+            canonicalSessionID: displayedSession,
+            currentSessionID: currentSession
+        ) == 4)
+        #expect(MediaCardProgressResolution.fallbackProgress(
+            displayedProgress: 4,
+            canonicalProgress: nil,
+            canonicalSessionID: nil,
+            currentSessionID: currentSession
+        ) == 4)
+    }
+
+    @Test("Current-session card mutation failure restores canonical progress")
+    func currentSessionCardMutationRestoresCanonicalProgress() {
+        let currentSession = makeSession(revision: 3).id
+
+        #expect(MediaCardProgressResolution.fallbackProgress(
+            displayedProgress: 4,
+            canonicalProgress: 7,
+            canonicalSessionID: currentSession,
+            currentSessionID: currentSession
+        ) == 7)
+    }
+
+    @Test("Known timestamps sort ahead of unknown timestamps deterministically")
+    func optionalTimestampSortOrder() {
+        let unknown = MediaListEntry(
+            id: 3,
+            status: .current,
+            progress: 0,
+            score: 0,
+            updatedAt: nil,
+            media: makeMedia(mediaID: 303)
+        )
+        let older = makeEntry(entryID: 1, mediaID: 101, updatedAt: 10)
+        let newer = makeEntry(entryID: 2, mediaID: 202, updatedAt: 20)
+
+        let sorted = [unknown, older, newer].sorted {
+            MediaListEntry.isUpdatedMoreRecently($0, than: $1)
+        }
+
+        #expect(sorted.map(\.media.id) == [202, 101, 303])
+    }
+
+    @Test("Rejected detail mutations restore the canonical entry")
+    func rejectedDetailMutationsRestoreCanonicalEntry() {
+        let staleResponse = makeUserEntry(
+            entryID: 1,
+            status: .current,
+            progress: 5,
+            score: 6,
+            updatedAt: 20
+        )
+        let canonicalEntry = makeEntry(
+            entryID: 2,
+            mediaID: 101,
+            status: .completed,
+            progress: 12,
+            score: 9,
+            updatedAt: 30
+        )
+
+        let resolvedUpdate = MediaDetailMutationResolution.afterUpdate(
+            staleResponse,
+            reconciliation: .rejected,
+            canonicalEntry: canonicalEntry
+        )
+        let resolvedDeletion = MediaDetailMutationResolution.afterDeletion(
+            reconciliation: .rejected,
+            canonicalEntry: canonicalEntry
+        )
+
+        #expect(resolvedUpdate?.id == canonicalEntry.id)
+        #expect(resolvedUpdate?.status == canonicalEntry.status)
+        #expect(resolvedUpdate?.progress == canonicalEntry.progress)
+        #expect(resolvedUpdate?.score == canonicalEntry.score)
+        #expect(resolvedDeletion?.id == canonicalEntry.id)
+        #expect(resolvedDeletion?.progress == canonicalEntry.progress)
+        #expect(MediaDetailMutationResolution.afterDeletion(
+            reconciliation: .applied,
+            canonicalEntry: canonicalEntry
+        ) == nil)
+    }
+
+    @Test("Progress mutation reconciles into the canonical entry")
+    func reconcilesProgress() async {
+        let client = ControlledMediaLibraryClient()
+        let store = MediaLibraryStore(client: client)
+        let session = makeSession()
+        let original = makeEntry(entryID: 1, mediaID: 101, progress: 4, score: 7, updatedAt: 10)
+
+        await completeLoad(store: store, client: client, type: .anime, session: session, entries: [original])
+        let mutation = store.beginMutation(mediaID: 101, type: .anime, sessionID: session.id)
+        let result = store.reconcile(
+            makeUserEntry(entryID: 1, status: .current, progress: 5, score: 7, updatedAt: 20),
+            mutation: mutation
+        )
+
+        #expect(result == .applied)
+        #expect(store.entry(mediaID: 101, type: .anime)?.progress == 5)
+        #expect(store.entry(mediaID: 101, type: .anime)?.score == 7)
+        #expect(store.entry(mediaID: 101, type: .anime)?.status == .current)
+        #expect(store.entry(mediaID: 101, type: .anime)?.updatedAt == 20)
+        #expect(store.entry(mediaID: 101, type: .anime)?.media.title.display == "Title 101")
+    }
+
+    @Test("Score mutation preserves progress and a missing server timestamp")
+    func reconcilesScoreWithoutTimestamp() async {
+        let client = ControlledMediaLibraryClient()
+        let store = MediaLibraryStore(client: client)
+        let session = makeSession()
+        let original = makeEntry(entryID: 1, mediaID: 101, progress: 4, score: 6, updatedAt: 10)
+
+        await completeLoad(store: store, client: client, type: .anime, session: session, entries: [original])
+        let mutation = store.beginMutation(mediaID: 101, type: .anime, sessionID: session.id)
+        let result = store.reconcile(
+            makeUserEntry(entryID: 1, status: .current, progress: 4, score: 9, updatedAt: nil),
+            mutation: mutation
+        )
+
+        #expect(result == .applied)
+        #expect(store.entry(mediaID: 101, type: .anime)?.score == 9)
+        #expect(store.entry(mediaID: 101, type: .anime)?.progress == 4)
+        #expect(store.entry(mediaID: 101, type: .anime)?.updatedAt == 10)
+    }
+
+    @Test("Status mutation reconciles without changing list order")
+    func reconcilesStatusPreservingOrder() async {
+        let client = ControlledMediaLibraryClient()
+        let store = MediaLibraryStore(client: client)
+        let session = makeSession()
+        let first = makeEntry(entryID: 1, mediaID: 101)
+        let updated = makeEntry(entryID: 2, mediaID: 202, status: .current, updatedAt: 10)
+        let last = makeEntry(entryID: 3, mediaID: 303)
+
+        await completeLoad(
+            store: store,
+            client: client,
+            type: .anime,
+            session: session,
+            entries: [first, updated, last]
+        )
+        let mutation = store.beginMutation(mediaID: 202, type: .anime, sessionID: session.id)
+        let result = store.reconcile(
+            makeUserEntry(entryID: 2, status: .completed, progress: 0, score: 0, updatedAt: 20),
+            mutation: mutation
+        )
+
+        #expect(result == .applied)
+        #expect(store.status(mediaID: 202, type: .anime) == .completed)
+        #expect(store.entries(for: .anime).map(\.media.id) == [101, 202, 303])
+    }
+
+    @Test("Authoritative media payload upserts a missing entry into a loaded snapshot")
+    func upsertsMissingEntry() async {
+        let client = ControlledMediaLibraryClient()
+        let store = MediaLibraryStore(client: client)
+        let session = makeSession()
+        let existing = makeEntry(entryID: 1, mediaID: 101)
+
+        await completeLoad(store: store, client: client, type: .anime, session: session, entries: [existing])
+        let mutation = store.beginMutation(mediaID: 202, type: .anime, sessionID: session.id)
+        let result = store.reconcile(
+            makeUserEntry(entryID: 2, status: .planning, progress: 0, score: 0, updatedAt: 20),
+            mutation: mutation,
+            media: makeMedia(mediaID: 202)
+        )
+
+        #expect(result == .applied)
+        #expect(store.entries(for: .anime).map(\.media.id) == [101, 202])
+        #expect(store.entry(mediaID: 202, type: .anime)?.status == .planning)
+        #expect(store.entry(mediaID: 202, type: .anime)?.updatedAt == 20)
+    }
+
+    @Test("Authoritative media upserts a missing entry with an unknown timestamp")
+    func upsertsMissingEntryWithoutTimestamp() async throws {
+        let client = ControlledMediaLibraryClient()
+        let store = MediaLibraryStore(client: client)
+        let session = makeSession()
+
+        await completeLoad(store: store, client: client, type: .anime, session: session, entries: [])
+        let mutation = store.beginMutation(mediaID: 303, type: .anime, sessionID: session.id)
+        let result = store.reconcile(
+            makeUserEntry(entryID: 3, status: .planning, progress: 0, score: 0, updatedAt: nil),
+            mutation: mutation,
+            media: makeMedia(mediaID: 303)
+        )
+
+        #expect(result == .applied)
+        let insertedEntry = try #require(store.entry(mediaID: 303, type: .anime))
+        #expect(insertedEntry.status == .planning)
+        #expect(insertedEntry.updatedAt == nil)
+    }
+
+    @Test("Incomplete results cannot fabricate a missing list entry")
+    func refusesIncompleteUpsert() async {
+        let client = ControlledMediaLibraryClient()
+        let store = MediaLibraryStore(client: client)
+        let session = makeSession()
+
+        await completeLoad(store: store, client: client, type: .anime, session: session, entries: [])
+
+        let missingMedia = store.beginMutation(mediaID: 202, type: .anime, sessionID: session.id)
+        #expect(store.reconcile(
+            makeUserEntry(entryID: 2, status: .planning, progress: 0, score: 0, updatedAt: 20),
+            mutation: missingMedia
+        ) == .unavailable)
+
+        #expect(store.entries(for: .anime).isEmpty)
+        #expect(store.state(for: .anime).hasUsableData)
+    }
+
+    @Test("A nil timestamp cannot replace a different canonical entry identity")
+    func unknownTimestampDoesNotReplaceDifferentEntry() async {
+        let client = ControlledMediaLibraryClient()
+        let store = MediaLibraryStore(client: client)
+        let session = makeSession()
+        let canonicalEntry = makeEntry(entryID: 2, mediaID: 303, updatedAt: 30)
+
+        await completeLoad(
+            store: store,
+            client: client,
+            type: .anime,
+            session: session,
+            entries: [canonicalEntry]
+        )
+        let mutation = store.beginMutation(mediaID: 303, type: .anime, sessionID: session.id)
+        let result = store.reconcile(
+            makeUserEntry(entryID: 3, status: .planning, progress: 0, score: 0, updatedAt: nil),
+            mutation: mutation,
+            media: makeMedia(mediaID: 303)
+        )
+
+        #expect(result == .unavailable)
+        #expect(store.entry(mediaID: 303, type: .anime)?.id == canonicalEntry.id)
+        #expect(store.entry(mediaID: 303, type: .anime)?.updatedAt == 30)
+    }
+
+    @Test("Deletion removes only the matching entry and preserves remaining order")
+    func reconcilesDeletionPreservingOrder() async {
+        let client = ControlledMediaLibraryClient()
+        let store = MediaLibraryStore(client: client)
+        let session = makeSession()
+
+        await completeLoad(
+            store: store,
+            client: client,
+            type: .anime,
+            session: session,
+            entries: [
+                makeEntry(entryID: 1, mediaID: 101),
+                makeEntry(entryID: 2, mediaID: 202),
+                makeEntry(entryID: 3, mediaID: 303),
+            ]
+        )
+
+        let mutation = store.beginMutation(mediaID: 202, type: .anime, sessionID: session.id)
+        let result = store.reconcileDeletion(entryID: 2, mutation: mutation)
+
+        #expect(result == .applied)
+        #expect(store.entries(for: .anime).map(\.media.id) == [101, 303])
+        #expect(store.entry(mediaID: 202, type: .anime) == nil)
+    }
+
+    @Test("Mutation reconciliation is isolated by media type")
+    func mutationTypeIsolation() async {
+        let client = ControlledMediaLibraryClient()
+        let store = MediaLibraryStore(client: client)
+        let session = makeSession()
+
+        await completeLoad(
+            store: store,
+            client: client,
+            type: .anime,
+            session: session,
+            entries: [makeEntry(entryID: 1, mediaID: 42, status: .current, updatedAt: 10)]
+        )
+        await completeLoad(
+            store: store,
+            client: client,
+            type: .manga,
+            session: session,
+            entries: [makeEntry(entryID: 2, mediaID: 42, status: .planning, updatedAt: 10)]
+        )
+
+        let update = store.beginMutation(mediaID: 42, type: .anime, sessionID: session.id)
+        #expect(store.reconcile(
+            makeUserEntry(entryID: 1, status: .completed, progress: 12, score: 8, updatedAt: 20),
+            mutation: update
+        ) == .applied)
+        #expect(store.status(mediaID: 42, type: .anime) == .completed)
+        #expect(store.status(mediaID: 42, type: .manga) == .planning)
+
+        let deletion = store.beginMutation(mediaID: 42, type: .anime, sessionID: session.id)
+        #expect(store.reconcileDeletion(entryID: 1, mutation: deletion) == .applied)
+        #expect(store.entry(mediaID: 42, type: .anime) == nil)
+        #expect(store.entry(mediaID: 42, type: .manga)?.id == 2)
+    }
+
+    @Test("Unloaded snapshots do not fabricate canonical state")
+    func unloadedSnapshotDoesNotFabricateState() async {
+        let client = ControlledMediaLibraryClient()
+        let store = MediaLibraryStore(client: client)
+        let session = makeSession()
+
+        await completeLoad(store: store, client: client, type: .anime, session: session, entries: [])
+        store.reset()
+
+        let update = store.beginMutation(mediaID: 101, type: .anime, sessionID: session.id)
+        #expect(store.reconcile(
+            makeUserEntry(entryID: 1, status: .current, progress: 1, score: 0, updatedAt: 20),
+            mutation: update,
+            media: makeMedia(mediaID: 101)
+        ) == .unavailable)
+        let deletion = store.beginMutation(mediaID: 101, type: .anime, sessionID: session.id)
+        #expect(store.reconcileDeletion(entryID: 1, mutation: deletion) == .unavailable)
+        #expect(store.state(for: .anime).phase == .idle)
+        #expect(!store.state(for: .anime).hasUsableData)
+        #expect(store.entries(for: .anime).isEmpty)
+    }
+
+    @Test("A mutation completed before the first load is applied to its snapshot")
+    func mutationBeforeInitialLoadIsApplied() async {
+        let client = ControlledMediaLibraryClient()
+        let store = MediaLibraryStore(client: client)
+        let session = makeSession()
+        let mutation = store.beginMutation(mediaID: 101, type: .anime, sessionID: session.id)
+
+        #expect(store.reconcile(
+            makeUserEntry(entryID: 1, status: .planning, progress: 0, score: 0, updatedAt: 20),
+            mutation: mutation,
+            media: makeMedia(mediaID: 101)
+        ) == .unavailable)
+
+        let load = Task { await store.load(.anime, session: session) }
+        let request = await client.nextRequest()
+        await client.succeed(request, with: [])
+        await load.value
+
+        #expect(store.entries(for: .anime).map(\.media.id) == [101])
+        #expect(store.status(mediaID: 101, type: .anime) == .planning)
+        #expect(store.entry(mediaID: 101, type: .anime)?.updatedAt == 20)
+    }
+
+    @Test("An unknown-timestamp mutation overlays the initial snapshot")
+    func unknownTimestampMutationBeforeInitialLoadIsApplied() async throws {
+        let client = ControlledMediaLibraryClient()
+        let store = MediaLibraryStore(client: client)
+        let session = makeSession()
+        let mutation = store.beginMutation(mediaID: 101, type: .anime, sessionID: session.id)
+
+        #expect(store.reconcile(
+            makeUserEntry(entryID: 1, status: .planning, progress: 0, score: 0, updatedAt: nil),
+            mutation: mutation,
+            media: makeMedia(mediaID: 101)
+        ) == .unavailable)
+
+        let load = Task { await store.load(.anime, session: session) }
+        let request = await client.nextRequest()
+        await client.succeed(request, with: [])
+        await load.value
+
+        let insertedEntry = try #require(store.entry(mediaID: 101, type: .anime))
+        #expect(insertedEntry.status == .planning)
+        #expect(insertedEntry.updatedAt == nil)
+    }
+
+    @Test("Unavailable pending mutations survive until an authoritative snapshot can apply them")
+    func unavailablePendingMutationIsRetained() async {
+        let client = ControlledMediaLibraryClient()
+        let store = MediaLibraryStore(client: client)
+        let session = makeSession()
+        let mutation = store.beginMutation(mediaID: 101, type: .anime, sessionID: session.id)
+
+        #expect(store.reconcile(
+            makeUserEntry(entryID: 1, status: .completed, progress: 5, score: 8, updatedAt: nil),
+            mutation: mutation
+        ) == .unavailable)
+
+        let firstLoad = Task { await store.load(.anime, session: session) }
+        let firstRequest = await client.nextRequest()
+        await client.succeed(firstRequest, with: [])
+        await firstLoad.value
+        #expect(store.entry(mediaID: 101, type: .anime) == nil)
+
+        let authoritativeEntry = makeEntry(
+            entryID: 1,
+            mediaID: 101,
+            status: .current,
+            progress: 4,
+            score: 6,
+            updatedAt: 30
+        )
+        let refresh = Task { await store.load(.anime, session: session, force: true) }
+        let refreshRequest = await client.nextRequest()
+        await client.succeed(refreshRequest, with: [authoritativeEntry])
+        await refresh.value
+
+        #expect(store.entry(mediaID: 101, type: .anime)?.status == .completed)
+        #expect(store.entry(mediaID: 101, type: .anime)?.progress == 5)
+        #expect(store.entry(mediaID: 101, type: .anime)?.score == 8)
+        #expect(store.entry(mediaID: 101, type: .anime)?.updatedAt == 30)
+    }
+
+    @Test("A newer applied mutation supersedes an older unavailable overlay")
+    func newerMutationSupersedesPendingOverlay() async {
+        let client = ControlledMediaLibraryClient()
+        let store = MediaLibraryStore(client: client)
+        let session = makeSession()
+        let original = makeEntry(
+            entryID: 1,
+            mediaID: 101,
+            status: .current,
+            progress: 1,
+            score: 0,
+            updatedAt: 10
+        )
+
+        await completeLoad(
+            store: store,
+            client: client,
+            type: .anime,
+            session: session,
+            entries: [original]
+        )
+
+        let olderMutation = store.beginMutation(
+            mediaID: 101,
+            type: .anime,
+            sessionID: session.id
+        )
+        #expect(store.reconcile(
+            makeUserEntry(
+                entryID: 2,
+                status: .planning,
+                progress: 0,
+                score: 0,
+                updatedAt: nil
+            ),
+            mutation: olderMutation,
+            media: original.media
+        ) == .unavailable)
+
+        let newerMutation = store.beginMutation(
+            mediaID: 101,
+            type: .anime,
+            sessionID: session.id
+        )
+        #expect(store.reconcile(
+            makeUserEntry(
+                entryID: 2,
+                status: .completed,
+                progress: 10,
+                score: 8,
+                updatedAt: 40
+            ),
+            mutation: newerMutation,
+            media: original.media
+        ) == .applied)
+
+        let refreshedEntry = makeEntry(
+            entryID: 2,
+            mediaID: 101,
+            status: .completed,
+            progress: 10,
+            score: 8,
+            updatedAt: 40
+        )
+        let refresh = Task { await store.load(.anime, session: session, force: true) }
+        let request = await client.nextRequest()
+        await client.succeed(request, with: [refreshedEntry])
+        await refresh.value
+
+        #expect(store.entry(mediaID: 101, type: .anime)?.id == 2)
+        #expect(store.entry(mediaID: 101, type: .anime)?.status == .completed)
+        #expect(store.entry(mediaID: 101, type: .anime)?.progress == 10)
+        #expect(store.entry(mediaID: 101, type: .anime)?.score == 8)
+        #expect(store.entry(mediaID: 101, type: .anime)?.updatedAt == 40)
+    }
+
+    @Test("A mutation completed during the first load overlays its stale response")
+    func mutationDuringInitialLoadIsApplied() async {
+        let client = ControlledMediaLibraryClient()
+        let store = MediaLibraryStore(client: client)
+        let session = makeSession()
+        let staleEntry = makeEntry(
+            entryID: 1,
+            mediaID: 101,
+            status: .current,
+            progress: 4,
+            updatedAt: 10
+        )
+
+        let load = Task { await store.load(.anime, session: session) }
+        let request = await client.nextRequest()
+        let mutation = store.beginMutation(mediaID: 101, type: .anime, sessionID: session.id)
+
+        #expect(store.reconcile(
+            makeUserEntry(entryID: 1, status: .current, progress: 5, score: 0, updatedAt: 20),
+            mutation: mutation
+        ) == .unavailable)
+        await client.succeed(request, with: [staleEntry])
+        await load.value
+
+        #expect(store.entry(mediaID: 101, type: .anime)?.progress == 5)
+        #expect(store.entry(mediaID: 101, type: .anime)?.updatedAt == 20)
+    }
+
+    @Test("A deletion completed during the first load removes its stale entry")
+    func deletionDuringInitialLoadIsApplied() async {
+        let client = ControlledMediaLibraryClient()
+        let store = MediaLibraryStore(client: client)
+        let session = makeSession()
+        let staleEntry = makeEntry(entryID: 1, mediaID: 101)
+
+        let load = Task { await store.load(.anime, session: session) }
+        let request = await client.nextRequest()
+        let mutation = store.beginMutation(mediaID: 101, type: .anime, sessionID: session.id)
+
+        #expect(store.reconcileDeletion(entryID: 1, mutation: mutation) == .unavailable)
+        await client.succeed(request, with: [staleEntry])
+        await load.value
+
+        #expect(store.state(for: .anime).phase == .loaded)
+        #expect(store.entries(for: .anime).isEmpty)
+    }
+
+    @Test("An older session mutation cannot alter the adopted session")
+    func staleSessionMutationIsRejected() async {
+        let client = ControlledMediaLibraryClient()
+        let store = MediaLibraryStore(client: client)
+        let oldSession = makeSession(username: "old-user", revision: 1)
+        let currentSession = makeSession(username: "current-user", revision: 2)
+
+        await completeLoad(
+            store: store,
+            client: client,
+            type: .anime,
+            session: oldSession,
+            entries: [makeEntry(entryID: 1, mediaID: 101)]
+        )
+        let oldUpdate = store.beginMutation(mediaID: 101, type: .anime, sessionID: oldSession.id)
+        let oldDeletion = store.beginMutation(mediaID: 202, type: .anime, sessionID: oldSession.id)
+        await completeLoad(
+            store: store,
+            client: client,
+            type: .anime,
+            session: currentSession,
+            entries: [makeEntry(entryID: 2, mediaID: 202, status: .planning, updatedAt: 10)]
+        )
+
+        #expect(store.reconcile(
+            makeUserEntry(entryID: 1, status: .completed, progress: 10, score: 9, updatedAt: 30),
+            mutation: oldUpdate,
+            media: makeMedia(mediaID: 101)
+        ) == .rejected)
+        #expect(store.reconcileDeletion(entryID: 2, mutation: oldDeletion) == .rejected)
+        #expect(store.entries(for: .anime).map(\.media.id) == [202])
+        #expect(store.status(mediaID: 202, type: .anime) == .planning)
+    }
+
+    @Test("An older equal-timestamp response cannot replace a newer response")
+    func equalTimestampStaleResponseIsRejected() async {
+        let client = ControlledMediaLibraryClient()
+        let store = MediaLibraryStore(client: client)
+        let session = makeSession()
+
+        await completeLoad(
+            store: store,
+            client: client,
+            type: .anime,
+            session: session,
+            entries: [makeEntry(entryID: 1, mediaID: 101, progress: 4, updatedAt: 10)]
+        )
+        let olderMutation = store.beginMutation(mediaID: 101, type: .anime, sessionID: session.id)
+        let newerMutation = store.beginMutation(mediaID: 101, type: .anime, sessionID: session.id)
+
+        #expect(store.reconcile(
+            makeUserEntry(entryID: 1, status: .current, progress: 6, score: 0, updatedAt: 20),
+            mutation: newerMutation
+        ) == .applied)
+        let staleResult = store.reconcile(
+            makeUserEntry(entryID: 1, status: .current, progress: 5, score: 0, updatedAt: 20),
+            mutation: olderMutation
+        )
+
+        #expect(staleResult == .rejected)
+        #expect(!staleResult.shouldApplyLocally)
+        #expect(store.entry(mediaID: 101, type: .anime)?.progress == 6)
+        #expect(store.entry(mediaID: 101, type: .anime)?.updatedAt == 20)
+    }
+
+    @Test("A refresh started before a mutation cannot overwrite its result")
+    func mutationInvalidatesOlderRefresh() async {
+        let client = ControlledMediaLibraryClient()
+        let store = MediaLibraryStore(client: client)
+        let session = makeSession()
+        let original = makeEntry(entryID: 1, mediaID: 101, progress: 4, updatedAt: 10)
+
+        await completeLoad(store: store, client: client, type: .anime, session: session, entries: [original])
+
+        let refresh = Task { await store.load(.anime, session: session, force: true) }
+        let refreshRequest = await client.nextRequest()
+        #expect(store.state(for: .anime).phase == .loading)
+
+        let mutation = store.beginMutation(mediaID: 101, type: .anime, sessionID: session.id)
+        #expect(store.reconcile(
+            makeUserEntry(entryID: 1, status: .current, progress: 5, score: 0, updatedAt: 20),
+            mutation: mutation
+        ) == .applied)
+        #expect(store.state(for: .anime).phase == .loaded)
+
+        await client.succeed(refreshRequest, with: [original])
+        await refresh.value
+
+        #expect(store.entry(mediaID: 101, type: .anime)?.progress == 5)
+        #expect(store.entry(mediaID: 101, type: .anime)?.updatedAt == 20)
+    }
+
+    @Test("A card mutation can restore an entry removed by an earlier refresh")
+    func cardMutationRestoresEntryRemovedByRefresh() async {
+        let client = ControlledMediaLibraryClient()
+        let store = MediaLibraryStore(client: client)
+        let session = makeSession()
+        let original = makeEntry(entryID: 1, mediaID: 101, progress: 4, updatedAt: 10)
+
+        await completeLoad(store: store, client: client, type: .anime, session: session, entries: [original])
+        let mutation = store.beginMutation(mediaID: 101, type: .anime, sessionID: session.id)
+        let refresh = Task { await store.load(.anime, session: session, force: true) }
+        let refreshRequest = await client.nextRequest()
+        await client.succeed(refreshRequest, with: [])
+        await refresh.value
+
+        #expect(store.entry(mediaID: 101, type: .anime) == nil)
+        #expect(store.reconcile(
+            makeUserEntry(entryID: 1, status: .current, progress: 5, score: 0, updatedAt: 20),
+            mutation: mutation,
+            media: original.media
+        ) == .applied)
+        #expect(store.entry(mediaID: 101, type: .anime)?.progress == 5)
+        #expect(store.entry(mediaID: 101, type: .anime)?.media.id == original.media.id)
     }
 
     @Test("Concurrent consumers share one request")
@@ -190,6 +884,7 @@ struct MediaLibraryStoreTests {
             session: oldSession,
             entries: [makeEntry(entryID: 1, mediaID: 101)]
         )
+        #expect(store.state(for: .manga).snapshotSessionID == oldSession.id)
 
         let oldLoad = Task { await store.load(.anime, session: oldSession, force: true) }
         let oldRequest = await client.nextRequest()
@@ -198,6 +893,7 @@ struct MediaLibraryStoreTests {
 
         #expect(store.state(for: .anime).phase == .idle)
         #expect(store.state(for: .manga).phase == .loading)
+        #expect(store.state(for: .manga).snapshotSessionID == nil)
         #expect(store.entries(for: .manga).isEmpty)
 
         await client.succeed(newRequest, with: [makeEntry(entryID: 2, mediaID: 202)])
@@ -208,6 +904,7 @@ struct MediaLibraryStoreTests {
         #expect(store.state(for: .anime).phase == .idle)
         #expect(store.entries(for: .anime).isEmpty)
         #expect(store.entries(for: .manga).map(\.media.id) == [202])
+        #expect(store.state(for: .manga).snapshotSessionID == newSession.id)
     }
 
     @Test("A late older-session load cannot replace the current session")
@@ -287,26 +984,49 @@ struct MediaLibraryStoreTests {
     private func makeEntry(
         entryID: Int,
         mediaID: Int,
-        status: MediaListStatus = .current
+        status: MediaListStatus = .current,
+        progress: Int = 0,
+        score: Double = 0,
+        updatedAt: Int? = nil
     ) -> MediaListEntry {
         MediaListEntry(
             id: entryID,
             status: status,
-            progress: 0,
-            score: 0,
-            updatedAt: entryID,
-            media: Media(
-                id: mediaID,
-                isAdult: false,
-                title: MediaTitle(romaji: "Title \(mediaID)", english: nil, native: nil),
-                coverImage: nil,
-                episodes: nil,
-                chapters: nil,
-                format: nil,
-                status: nil,
-                averageScore: nil,
-                nextAiringEpisode: nil
-            )
+            progress: progress,
+            score: score,
+            updatedAt: updatedAt ?? entryID,
+            media: makeMedia(mediaID: mediaID)
+        )
+    }
+
+    private func makeUserEntry(
+        entryID: Int,
+        status: MediaListStatus,
+        progress: Int,
+        score: Double,
+        updatedAt: Int?
+    ) -> UserMediaEntry {
+        UserMediaEntry(
+            id: entryID,
+            status: status,
+            score: score,
+            progress: progress,
+            updatedAt: updatedAt
+        )
+    }
+
+    private func makeMedia(mediaID: Int) -> Media {
+        Media(
+            id: mediaID,
+            isAdult: false,
+            title: MediaTitle(romaji: "Title \(mediaID)", english: nil, native: nil),
+            coverImage: nil,
+            episodes: nil,
+            chapters: nil,
+            format: nil,
+            status: nil,
+            averageScore: nil,
+            nextAiringEpisode: nil
         )
     }
 }

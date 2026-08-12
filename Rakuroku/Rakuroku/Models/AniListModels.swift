@@ -131,8 +131,19 @@ struct MediaListEntry: Codable, Sendable, Identifiable {
     let status: MediaListStatus
     let progress: Int
     let score: Double
-    let updatedAt: Int
+    let updatedAt: Int?
     let media: Media
+
+    nonisolated var updatedAtSortValue: Int {
+        updatedAt ?? Int.min
+    }
+
+    nonisolated static func isUpdatedMoreRecently(_ lhs: Self, than rhs: Self) -> Bool {
+        if lhs.updatedAtSortValue == rhs.updatedAtSortValue {
+            return lhs.media.id < rhs.media.id
+        }
+        return lhs.updatedAtSortValue > rhs.updatedAtSortValue
+    }
 }
 
 struct MediaListGroup: Codable, Sendable {
@@ -278,6 +289,7 @@ struct UserMediaEntry: Codable, Sendable {
     let status: MediaListStatus
     let score: Double
     let progress: Int
+    let updatedAt: Int?
 }
 
 // MARK: - Seasonal
