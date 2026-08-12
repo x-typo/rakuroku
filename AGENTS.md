@@ -40,17 +40,37 @@ This file contains repo-local instructions for AI coding agents.
 
 ## Build (Physical Device)
 
-Discover device ID dynamically, then build and install:
+Build from the active checkout or worktree, give it an isolated DerivedData path, and install only that exact build product:
 
 ```bash
-cd /Users/x-typo/Documents/GitHub/rakuroku
-DEVICE_ID=$(xcodebuild -project Rakuroku/Rakuroku.xcodeproj -scheme Rakuroku -showdestinations 2>&1 | grep "name:Ty's iPhone" | sed 's/.*id:\([^,}]*\).*/\1/')
+set -euo pipefail
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+PROJECT_PATH="$REPO_ROOT/Rakuroku/Rakuroku.xcodeproj"
+DERIVED_DATA_PATH="$REPO_ROOT/DerivedData/DeviceRelease"
+APP_PATH="$DERIVED_DATA_PATH/Build/Products/Release-iphoneos/Rakuroku.app"
+
+test -d "$PROJECT_PATH"
+DEVICE_ID=$(
+  xcodebuild -project "$PROJECT_PATH" -scheme Rakuroku -showdestinations 2>&1 |
+    grep "platform:iOS, arch:.*name:Ty['’]s iPhone[[:space:]]*}" |
+    sed 's/.*id:\([^,}]*\).*/\1/' |
+    awk 'NR == 1 { deviceID = $0 } END { if (NR == 1) print deviceID; else exit 1 }'
+)
+test -n "$DEVICE_ID"
 
 # Build
-xcodebuild -project Rakuroku/Rakuroku.xcodeproj -configuration Release -scheme Rakuroku -destination "id=$DEVICE_ID" -allowProvisioningUpdates
+xcodebuild \
+  -project "$PROJECT_PATH" \
+  -configuration Release \
+  -scheme Rakuroku \
+  -destination "id=$DEVICE_ID" \
+  -derivedDataPath "$DERIVED_DATA_PATH" \
+  -allowProvisioningUpdates
 
 # Install
-xcrun devicectl device install app --device "$DEVICE_ID" "$(find ~/Library/Developer/Xcode/DerivedData/Rakuroku-*/Build/Products/Release-iphoneos/Rakuroku.app -maxdepth 0 -print -quit)"
+test -d "$APP_PATH"
+xcrun devicectl device install app --device "$DEVICE_ID" "$APP_PATH"
 ```
 
 ## AniList OAuth
