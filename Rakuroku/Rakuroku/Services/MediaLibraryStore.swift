@@ -31,6 +31,126 @@ enum MediaLibraryMutationAuthorization {
     }
 }
 
+enum MediaLibrarySnapshotValidation {
+    nonisolated static func isCurrent(
+        hasUsableData: Bool,
+        snapshotSessionID: MediaLibrarySession.ID?,
+        activeSessionID: MediaLibrarySession.ID
+    ) -> Bool {
+        hasUsableData && snapshotSessionID == activeSessionID
+    }
+}
+
+enum MediaLibraryMembershipAppearance {
+    nonisolated static func opacity(
+        hasUsableData: Bool,
+        snapshotSessionID: MediaLibrarySession.ID?,
+        activeSessionID: MediaLibrarySession.ID,
+        status: MediaListStatus?
+    ) -> Double {
+        guard MediaLibrarySnapshotValidation.isCurrent(
+            hasUsableData: hasUsableData,
+            snapshotSessionID: snapshotSessionID,
+            activeSessionID: activeSessionID
+        ) else {
+            return 1
+        }
+        return status == nil ? 0.5 : 1
+    }
+}
+
+struct MediaLibraryUpNextItem: Identifiable, Sendable {
+    let entry: MediaListEntry
+    let nextEpisode: Int
+
+    nonisolated var id: Int { entry.media.id }
+}
+
+enum MediaLibraryUpNext {
+    nonisolated static func items(
+        entries: [MediaListEntry],
+        hasUsableData: Bool,
+        snapshotSessionID: MediaLibrarySession.ID?,
+        activeSessionID: MediaLibrarySession.ID,
+        nowEpoch: Int
+    ) -> [MediaLibraryUpNextItem] {
+        guard MediaLibrarySnapshotValidation.isCurrent(
+            hasUsableData: hasUsableData,
+            snapshotSessionID: snapshotSessionID,
+            activeSessionID: activeSessionID
+        ) else {
+            return []
+        }
+
+        return entries.compactMap { entry in
+            guard entry.status == .current || entry.status == .repeating,
+                  entry.progress >= 0,
+                  let availableThrough = availableThrough(
+                    for: entry.media,
+                    nowEpoch: nowEpoch
+                  ),
+                  entry.progress < availableThrough else {
+                return nil
+            }
+            return MediaLibraryUpNextItem(
+                entry: entry,
+                nextEpisode: entry.progress + 1
+            )
+        }
+        .sorted {
+            MediaListEntry.isUpdatedMoreRecently($0.entry, than: $1.entry)
+        }
+    }
+
+    nonisolated static func availableThrough(
+        for media: Media,
+        nowEpoch: Int
+    ) -> Int? {
+        if let nextAiringEpisode = media.nextAiringEpisode {
+            guard nextAiringEpisode.episode > 0 else { return nil }
+            return nextAiringEpisode.airingAt > nowEpoch
+                ? nextAiringEpisode.episode - 1
+                : nextAiringEpisode.episode
+        }
+
+        guard media.status == "FINISHED",
+              let episodes = media.episodes,
+              episodes > 0 else {
+            return nil
+        }
+        return episodes
+    }
+
+    nonisolated static func nextRefreshEpoch(
+        entries: [MediaListEntry],
+        hasUsableData: Bool,
+        snapshotSessionID: MediaLibrarySession.ID?,
+        activeSessionID: MediaLibrarySession.ID,
+        nowEpoch: Int
+    ) -> Int? {
+        guard MediaLibrarySnapshotValidation.isCurrent(
+            hasUsableData: hasUsableData,
+            snapshotSessionID: snapshotSessionID,
+            activeSessionID: activeSessionID
+        ) else {
+            return nil
+        }
+
+        return entries.compactMap { entry in
+            guard entry.status == .current || entry.status == .repeating,
+                  entry.progress >= 0,
+                  let nextAiringEpisode = entry.media.nextAiringEpisode,
+                  nextAiringEpisode.episode > 0,
+                  nextAiringEpisode.airingAt > nowEpoch,
+                  entry.progress == nextAiringEpisode.episode - 1 else {
+                return nil
+            }
+            return nextAiringEpisode.airingAt
+        }
+        .min()
+    }
+}
+
 enum MediaLibraryPhase: Equatable, Sendable {
     case idle
     case loading
@@ -132,6 +252,34 @@ final class MediaLibraryStore {
 
     func status(mediaID: Int, type: MediaType) -> MediaListStatus? {
         entry(mediaID: mediaID, type: type)?.status
+    }
+
+    func upNextItems(
+        activeSessionID: MediaLibrarySession.ID,
+        nowEpoch: Int
+    ) -> [MediaLibraryUpNextItem] {
+        let animeState = state(for: .anime)
+        return MediaLibraryUpNext.items(
+            entries: animeState.entries,
+            hasUsableData: animeState.hasUsableData,
+            snapshotSessionID: animeState.snapshotSessionID,
+            activeSessionID: activeSessionID,
+            nowEpoch: nowEpoch
+        )
+    }
+
+    func nextUpNextRefreshEpoch(
+        activeSessionID: MediaLibrarySession.ID,
+        nowEpoch: Int
+    ) -> Int? {
+        let animeState = state(for: .anime)
+        return MediaLibraryUpNext.nextRefreshEpoch(
+            entries: animeState.entries,
+            hasUsableData: animeState.hasUsableData,
+            snapshotSessionID: animeState.snapshotSessionID,
+            activeSessionID: activeSessionID,
+            nowEpoch: nowEpoch
+        )
     }
 
     func beginMutation(

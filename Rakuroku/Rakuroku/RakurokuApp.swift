@@ -29,19 +29,19 @@ struct RakurokuApp: App {
 // Each tab gets its own NavigationStack so navigation state is independent per tab
 struct ContentView: View {
     @Environment(AuthStore.self) private var authStore
-    @State private var selectedTab = Tab.anime
+    @State private var selectedTab = Tab.home
     @State private var ready = false
 
     enum Tab: Hashable {
-        case discover, anime, manga, schedule, profile
+        case home, anime, manga, schedule, profile
     }
 
     var body: some View {
         Group {
             if ready {
                 TabView(selection: $selectedTab) {
-                    SwiftUI.Tab("Discover", systemImage: "magnifyingglass", value: Tab.discover) {
-                        TabNavigationWrapper { DiscoverView() }
+                    SwiftUI.Tab("Home", systemImage: "house", value: Tab.home) {
+                        TabNavigationWrapper { HomeView() }
                     }
 
                     SwiftUI.Tab("Anime", systemImage: "tv", value: Tab.anime) {

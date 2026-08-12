@@ -16,10 +16,21 @@ struct SeasonListView: View {
     @State private var currentPage = 1
     @State private var loadMoreError: String?
 
+    private var activeSessionID: MediaLibrarySession.ID {
+        authStore.mediaLibrarySession.id
+    }
+    private var hasCurrentAnimeSnapshot: Bool {
+        let libraryState = mediaLibraryStore.state(for: .anime)
+        return MediaLibrarySnapshotValidation.isCurrent(
+            hasUsableData: libraryState.hasUsableData,
+            snapshotSessionID: libraryState.snapshotSessionID,
+            activeSessionID: activeSessionID
+        )
+    }
     private var personalizationWarning: String? {
         let libraryState = mediaLibraryStore.state(for: .anime)
         if case .failed(let message) = libraryState.phase {
-            return libraryState.hasUsableData
+            return hasCurrentAnimeSnapshot
                 ? "List refresh failed. \(message)"
                 : "List status unavailable. \(message)"
         }
@@ -90,7 +101,7 @@ struct SeasonListView: View {
     @ViewBuilder
     private func seasonMediaRow(_ item: SeasonalMedia) -> some View {
         let libraryState = mediaLibraryStore.state(for: .anime)
-        let userStatus = libraryState.hasUsableData
+        let userStatus = hasCurrentAnimeSnapshot
             ? mediaLibraryStore.status(mediaID: item.id, type: .anime)
             : nil
 
@@ -102,7 +113,7 @@ struct SeasonListView: View {
                     Text(item.title.display)
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(Theme.textPrimary)
-                        .lineLimit(2)
+                        .lineLimit(2, reservesSpace: true)
 
                     if let studio = Formatters.mainStudioName(item.studios) {
                         Text(studio)
@@ -140,6 +151,17 @@ struct SeasonListView: View {
             .padding(.horizontal, 16)
         }
         .buttonStyle(.plain)
+        .opacity(MediaLibraryMembershipAppearance.opacity(
+            hasUsableData: libraryState.hasUsableData,
+            snapshotSessionID: libraryState.snapshotSessionID,
+            activeSessionID: activeSessionID,
+            status: userStatus
+        ))
+        .accessibilityValue(
+            hasCurrentAnimeSnapshot
+                ? Formatters.statusLabel(userStatus) ?? "Not in your list"
+                : "List status unavailable"
+        )
     }
 
     private func loadData() async {
