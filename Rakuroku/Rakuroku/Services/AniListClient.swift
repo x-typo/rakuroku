@@ -146,12 +146,15 @@ actor AniListClient {
             .filter { $0.media.isAdult != true }
         var entriesByMediaID: [Int: MediaListEntry] = [:]
         for entry in allEntries {
-            if let existing = entriesByMediaID[entry.media.id], existing.updatedAt >= entry.updatedAt {
+            if let existing = entriesByMediaID[entry.media.id],
+               existing.updatedAtSortValue >= entry.updatedAtSortValue {
                 continue
             }
             entriesByMediaID[entry.media.id] = entry
         }
-        return entriesByMediaID.values.sorted { $0.updatedAt > $1.updatedAt }
+        return entriesByMediaID.values.sorted {
+            MediaListEntry.isUpdatedMoreRecently($0, than: $1)
+        }
     }
 
     func fetchMediaDetails(id: Int) async throws -> MediaDetails {
@@ -434,7 +437,7 @@ private enum Queries {
     static let userMediaStatus = """
     query ($userName: String, $mediaId: Int) {
       MediaList(userName: $userName, mediaId: $mediaId) {
-        id status score progress
+        id status score progress updatedAt
       }
     }
     """
@@ -550,19 +553,19 @@ private enum Queries {
 private enum Mutations {
     static let updateProgress = """
     mutation ($mediaId: Int, $progress: Int) {
-      SaveMediaListEntry(mediaId: $mediaId, progress: $progress) { id status score progress }
+      SaveMediaListEntry(mediaId: $mediaId, progress: $progress) { id status score progress updatedAt }
     }
     """
 
     static let updateScore = """
     mutation ($mediaId: Int, $score: Float) {
-      SaveMediaListEntry(mediaId: $mediaId, score: $score) { id status score progress }
+      SaveMediaListEntry(mediaId: $mediaId, score: $score) { id status score progress updatedAt }
     }
     """
 
     static let updateStatus = """
     mutation ($mediaId: Int, $status: MediaListStatus) {
-      SaveMediaListEntry(mediaId: $mediaId, status: $status) { id status score progress }
+      SaveMediaListEntry(mediaId: $mediaId, status: $status) { id status score progress updatedAt }
     }
     """
 
@@ -574,7 +577,7 @@ private enum Mutations {
 
     static let addToList = """
     mutation ($mediaId: Int, $status: MediaListStatus) {
-      SaveMediaListEntry(mediaId: $mediaId, status: $status) { id status score progress }
+      SaveMediaListEntry(mediaId: $mediaId, status: $status) { id status score progress updatedAt }
     }
     """
 }

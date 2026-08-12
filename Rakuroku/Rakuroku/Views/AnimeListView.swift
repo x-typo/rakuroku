@@ -37,7 +37,9 @@ struct MediaListView: View {
         if !searchQuery.isEmpty {
             result = result.filter { $0.media.title.matches(searchQuery) }
         }
-        return result.sorted { $0.updatedAt > $1.updatedAt }
+        return result.sorted {
+            MediaListEntry.isUpdatedMoreRecently($0, than: $1)
+        }
     }
 
     var body: some View {
@@ -92,7 +94,11 @@ struct MediaListView: View {
                         .listRowBackground(Color.clear)
                     } else {
                         ForEach(filteredEntries) { entry in
-                            MediaCardView(entry: entry, type: type)
+                            MediaCardView(
+                                entry: entry,
+                                type: type,
+                                snapshotSessionID: libraryState.snapshotSessionID
+                            )
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(Color.clear)
                                 .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
