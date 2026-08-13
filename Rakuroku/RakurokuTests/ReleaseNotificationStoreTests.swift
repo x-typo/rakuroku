@@ -727,7 +727,7 @@ struct ReleaseNotificationStoreTests {
         #expect(store.schedulingError == "Test add failure")
     }
 
-    @Test("Enabling requests authorization and persists only a granted result")
+    @Test("Enabling requests authorization and persists only after permission is granted")
     func authorizationPreferenceBehavior() async {
         let grantedCenter = FakeNotificationCenter(status: .notDetermined, authorizationResult: true, statusAfterAuthorization: .authorized)
         let grantedPreferences = FakePreferences()
