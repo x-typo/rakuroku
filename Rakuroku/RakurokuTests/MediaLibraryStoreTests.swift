@@ -1152,7 +1152,7 @@ struct MediaLibraryStoreTests {
         ) == .applied)
         #expect(store.state(for: .anime).phase == .loaded)
 
-        await client.succeed(refreshRequest, with: [original])
+        await client.succeedIfPending(refreshRequest, with: [original])
         await refresh.value
 
         #expect(store.entry(mediaID: 101, type: .anime)?.progress == 5)
@@ -1352,7 +1352,10 @@ struct MediaLibraryStoreTests {
         #expect(store.entries(for: .manga).isEmpty)
 
         await client.succeed(newRequest, with: [makeEntry(entryID: 2, mediaID: 202)])
-        await client.succeed(oldRequest, with: [makeEntry(entryID: 3, mediaID: 303)])
+        await client.succeedIfPending(
+            oldRequest,
+            with: [makeEntry(entryID: 3, mediaID: 303)]
+        )
         await newLoad.value
         await oldLoad.value
 
@@ -1375,8 +1378,11 @@ struct MediaLibraryStoreTests {
         let newRequest = await client.nextRequest()
 
         await oldLoad.value
-        await client.succeed(oldRequest, with: [makeEntry(entryID: 1, mediaID: 101)])
-        await client.fail(oldRequest, with: .offline)
+        await client.succeedIfPending(
+            oldRequest,
+            with: [makeEntry(entryID: 1, mediaID: 101)]
+        )
+        await client.failIfPending(oldRequest, with: .offline)
         await client.succeed(newRequest, with: [makeEntry(entryID: 2, mediaID: 202)])
         await newLoad.value
 
@@ -1592,11 +1598,27 @@ private actor ControlledMediaLibraryClient: MediaLibraryClient {
     }
 
     func succeed(_ request: Request, with entries: [MediaListEntry]) {
-        guard let continuation = completions.removeValue(forKey: request.id) else { return }
+        guard let continuation = completions.removeValue(forKey: request.id) else {
+            Issue.record("No pending media-library request \(request.id) to complete")
+            return
+        }
         continuation.resume(returning: entries)
     }
 
     func fail(_ request: Request, with error: StubError) {
+        guard let continuation = completions.removeValue(forKey: request.id) else {
+            Issue.record("No pending media-library request \(request.id) to fail")
+            return
+        }
+        continuation.resume(throwing: error)
+    }
+
+    func succeedIfPending(_ request: Request, with entries: [MediaListEntry]) {
+        guard let continuation = completions.removeValue(forKey: request.id) else { return }
+        continuation.resume(returning: entries)
+    }
+
+    func failIfPending(_ request: Request, with error: StubError) {
         guard let continuation = completions.removeValue(forKey: request.id) else { return }
         continuation.resume(throwing: error)
     }
