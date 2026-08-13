@@ -160,7 +160,7 @@ struct ReleaseNotificationRequest: Equatable, Sendable {
     let airingAt: Int
 
     nonisolated var notificationBody: String {
-        "Episode \(episode) is airing now according to AniList."
+        "Episode \(episode) is airing now."
     }
 
     nonisolated func notificationRequest() -> UNNotificationRequest {
@@ -427,7 +427,7 @@ final class UserNotificationCenterClient: ReleaseNotificationCenterClient {
                 airingAt: airingAt
               ),
               request.content.body
-                == "Episode \(episode) is airing now according to AniList.",
+                == "Episode \(episode) is airing now.",
               request.content.threadIdentifier == "rakuroku.release",
               request.content.sound == .default,
               ReleaseNotificationTrigger.matches(request.trigger, airingAt: airingAt) else {

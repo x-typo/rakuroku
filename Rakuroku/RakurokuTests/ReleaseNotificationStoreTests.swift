@@ -104,6 +104,7 @@ struct ReleaseNotificationStoreTests {
 
         #expect(valid.identifier == model.identifier)
         #expect(valid.content.title == model.title)
+        #expect(model.notificationBody == "Episode 8 is airing now.")
         #expect(valid.content.body == model.notificationBody)
         #expect(valid.content.threadIdentifier == "rakuroku.release")
         #expect(UserNotificationCenterClient.pendingRequest(valid).request == model)
