@@ -763,6 +763,7 @@ final class ReleaseNotificationStore {
             .sorted()
         center.removeDeliveredRequests(withIdentifiers: managedDeliveredIdentifiers)
         scheduledCount = 0
+        schedulingError = nil
         return true
     }
 

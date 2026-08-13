@@ -238,13 +238,15 @@ struct ReleaseNotificationStoreTests {
     func sessionChangeWithNilPlanCleansManagedRequests() async {
         let first = makeSession(username: "first")
         let second = makeSession(username: "second")
-        let managed = candidate(mediaID: 1, episode: 2, airingAt: 2_000).request(ownerUsername: first.id.username)
-        let center = FakeNotificationCenter(status: .authorized, pending: [
-            PendingReleaseNotificationRequest(identifier: managed.identifier, request: managed),
-        ])
+        let managedCandidate = candidate(mediaID: 1, episode: 2, airingAt: 2_000)
+        let managed = managedCandidate.request(ownerUsername: first.id.username)
+        let center = FakeNotificationCenter(status: .authorized)
+        center.failingMediaIDs = [managed.mediaID]
         let store = ReleaseNotificationStore(center: center, preferences: FakePreferences(isEnabled: true))
 
-        await store.synchronize(candidates: [], sessionID: first.id)
+        await store.synchronize(candidates: [managedCandidate], sessionID: first.id)
+        #expect(store.schedulingError == "Test add failure")
+
         center.pending = [PendingReleaseNotificationRequest(identifier: managed.identifier, request: managed)]
         center.removedIdentifiers.removeAll()
 
@@ -252,6 +254,33 @@ struct ReleaseNotificationStoreTests {
 
         #expect(center.removedIdentifiers == [managed.identifier])
         #expect(center.pending.isEmpty)
+        #expect(store.scheduledCount == 0)
+        #expect(store.schedulingError == nil)
+    }
+
+    @Test("Canceling managed notifications clears a previous scheduling error")
+    func cancelManagedNotificationsClearsSchedulingError() async {
+        let session = makeSession()
+        let managedCandidate = candidate(mediaID: 1, episode: 2, airingAt: 2_000)
+        let managed = managedCandidate.request(ownerUsername: session.id.username)
+        let center = FakeNotificationCenter(status: .authorized)
+        center.failingMediaIDs = [managed.mediaID]
+        let store = ReleaseNotificationStore(
+            center: center,
+            preferences: FakePreferences(isEnabled: true)
+        )
+
+        await store.synchronize(candidates: [managedCandidate], sessionID: session.id)
+        #expect(store.schedulingError == "Test add failure")
+
+        center.pending = [
+            PendingReleaseNotificationRequest(identifier: managed.identifier, request: managed),
+        ]
+        await store.cancelPendingReleaseNotifications()
+
+        #expect(center.pending.isEmpty)
+        #expect(store.scheduledCount == 0)
+        #expect(store.schedulingError == nil)
     }
 
     @Test("A cold store with no candidates sanitizes managed notifications for the resolved owner")
