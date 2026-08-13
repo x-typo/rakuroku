@@ -875,7 +875,7 @@ final class ReleaseNotificationRouter {
 }
 
 enum ReleaseNotificationRouteDiagnostics {
-    private static let logger = Logger(
+    nonisolated private static let logger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "Rakuroku",
         category: "ReleaseNotifications"
     )
