@@ -34,18 +34,36 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         didReceive response: UNNotificationResponse
     ) async {
         let request = response.notification.request
-        guard let tap = ReleaseNotificationTapValidation.parse(
+        await ReleaseNotificationResponseHandler.handle(
             identifier: request.identifier,
             actionIdentifier: response.actionIdentifier,
-            userInfo: request.content.userInfo
-        ) else {
-            return
-        }
+            userInfo: request.content.userInfo,
+            router: ReleaseNotificationRouter.shared
+        )
+    }
+}
 
-        await ReleaseNotificationRouter.shared.accept(
+@MainActor
+enum ReleaseNotificationResponseHandler {
+    @discardableResult
+    static func handle(
+        identifier: String,
+        actionIdentifier: String,
+        userInfo: [AnyHashable: Any],
+        router: ReleaseNotificationRouter
+    ) -> Bool {
+        guard let tap = ReleaseNotificationTapValidation.parse(
+            identifier: identifier,
+            actionIdentifier: actionIdentifier,
+            userInfo: userInfo
+        ) else {
+            return false
+        }
+        router.accept(
             mediaID: tap.mediaID,
             ownerUsername: tap.ownerUsername
         )
+        return true
     }
 }
 
@@ -149,10 +167,88 @@ enum ContentPresentationState: Equatable {
     }
 }
 
+enum ContentTab: Hashable {
+    case home, anime, manga, schedule, profile
+}
+
+struct ReleaseNotificationNavigation: Equatable {
+    let tab: ContentTab
+    let detailDestination: MediaDetailDestination
+}
+
+@MainActor @Observable
+final class ContentNavigationState {
+    var selectedTab = ContentTab.home
+    var homePath = NavigationPath()
+    var animePath = NavigationPath()
+    var mangaPath = NavigationPath()
+    var schedulePath = NavigationPath()
+    var profilePath = NavigationPath()
+    private(set) var pendingNotificationAnimeDestination: MediaDetailDestination?
+
+    func apply(_ outcome: ReleaseNotificationRouteCoordinator.Outcome) {
+        guard case let .navigate(navigation) = outcome else { return }
+        selectedTab = navigation.tab
+        pendingNotificationAnimeDestination = navigation.detailDestination
+    }
+
+    func presentPendingNotificationAnimeDestination() {
+        guard let destination = pendingNotificationAnimeDestination else { return }
+        animePath = NavigationPath()
+        animePath.append(destination)
+        pendingNotificationAnimeDestination = nil
+    }
+}
+
+@MainActor
+enum ReleaseNotificationRouteCoordinator {
+    enum Outcome: Equatable {
+        case none
+        case deferred
+        case rejected
+        case navigate(ReleaseNotificationNavigation)
+    }
+
+    static func consume(
+        router: ReleaseNotificationRouter,
+        sceneID: UUID,
+        isReady: Bool,
+        isIdentityResolved: Bool,
+        isActive: Bool,
+        ownerUsername: String
+    ) -> Outcome {
+        guard let destination = router.pendingDestination(for: sceneID) else {
+            return .none
+        }
+        guard isReady, isIdentityResolved, isActive else {
+            return .deferred
+        }
+        guard router.takePendingDestination(for: sceneID) == destination else {
+            return .none
+        }
+        guard ReleaseNotificationTapValidation.belongsToOwner(
+            ReleaseNotificationTap(
+                mediaID: destination.mediaID,
+                ownerUsername: destination.ownerUsername
+            ),
+            username: ownerUsername
+        ) else {
+            return .rejected
+        }
+        return .navigate(
+            ReleaseNotificationNavigation(
+                tab: .anime,
+                detailDestination: MediaDetailDestination(mediaId: destination.mediaID)
+            )
+        )
+    }
+}
+
 // Each tab gets its own NavigationStack so navigation state is independent per tab
 struct ContentView: View {
     private struct ReleaseNotificationRouteRequest: Hashable {
         let isReady: Bool
+        let isIdentityResolved: Bool
         let isActive: Bool
         let destination: ReleaseNotificationRouter.Destination?
     }
@@ -163,27 +259,20 @@ struct ContentView: View {
     @Environment(ReleaseNotificationRouter.self) private var releaseNotificationRouter
     @Environment(\.scenePhase) private var scenePhase
 
-    @State private var selectedTab = Tab.home
     @State private var ready = false
-    @State private var homePath = NavigationPath()
-    @State private var animePath = NavigationPath()
-    @State private var mangaPath = NavigationPath()
-    @State private var schedulePath = NavigationPath()
-    @State private var profilePath = NavigationPath()
     @State private var notificationSceneID = UUID()
-
-    enum Tab: Hashable {
-        case home, anime, manga, schedule, profile
-    }
+    @State private var navigationState = ContentNavigationState()
 
     var body: some View {
+        @Bindable var navigationState = navigationState
         let synchronizationRequest = releaseNotificationSynchronizationRequest
         let presentationState = ContentPresentationState.resolve(
             isReady: ready,
             isMediaLibraryIdentityResolved: authStore.isMediaLibraryIdentityResolved
         )
         let routeRequest = ReleaseNotificationRouteRequest(
-            isReady: ready && authStore.isMediaLibraryIdentityResolved,
+            isReady: ready,
+            isIdentityResolved: authStore.isMediaLibraryIdentityResolved,
             isActive: scenePhase == .active,
             destination: releaseNotificationRouter.pendingDestination(
                 for: notificationSceneID
@@ -193,25 +282,31 @@ struct ContentView: View {
         Group {
             switch presentationState {
             case .tabs:
-                TabView(selection: $selectedTab) {
-                    SwiftUI.Tab("Home", systemImage: "house", value: Tab.home) {
-                        TabNavigationWrapper(path: $homePath) { HomeView() }
+                TabView(selection: $navigationState.selectedTab) {
+                    SwiftUI.Tab("Home", systemImage: "house", value: ContentTab.home) {
+                        TabNavigationWrapper(path: $navigationState.homePath) { HomeView() }
                     }
 
-                    SwiftUI.Tab("Anime", systemImage: "tv", value: Tab.anime) {
-                        TabNavigationWrapper(path: $animePath) { AnimeListView() }
+                    SwiftUI.Tab("Anime", systemImage: "tv", value: ContentTab.anime) {
+                        TabNavigationWrapper(path: $navigationState.animePath) { AnimeListView() }
+                            .onChange(
+                                of: navigationState.pendingNotificationAnimeDestination,
+                                initial: true
+                            ) { _, _ in
+                                navigationState.presentPendingNotificationAnimeDestination()
+                            }
                     }
 
-                    SwiftUI.Tab("Manga", systemImage: "book", value: Tab.manga) {
-                        TabNavigationWrapper(path: $mangaPath) { MangaListView() }
+                    SwiftUI.Tab("Manga", systemImage: "book", value: ContentTab.manga) {
+                        TabNavigationWrapper(path: $navigationState.mangaPath) { MangaListView() }
                     }
 
-                    SwiftUI.Tab("Schedule", systemImage: "calendar", value: Tab.schedule) {
-                        TabNavigationWrapper(path: $schedulePath) { ScheduleView() }
+                    SwiftUI.Tab("Schedule", systemImage: "calendar", value: ContentTab.schedule) {
+                        TabNavigationWrapper(path: $navigationState.schedulePath) { ScheduleView() }
                     }
 
-                    SwiftUI.Tab("Profile", systemImage: "person", value: Tab.profile) {
-                        TabNavigationWrapper(path: $profilePath) { ProfileView() }
+                    SwiftUI.Tab("Profile", systemImage: "person", value: ContentTab.profile) {
+                        TabNavigationWrapper(path: $navigationState.profilePath) { ProfileView() }
                     }
                 }
                 .tint(Theme.primary)
@@ -261,27 +356,16 @@ struct ContentView: View {
             }
             await refreshReleaseNotificationsAfterActivation()
         }
-        .task(id: routeRequest) {
-            guard routeRequest.isReady,
-                  routeRequest.isActive,
-                  let destination = routeRequest.destination,
-                  releaseNotificationRouter.takePendingDestination(
-                    for: notificationSceneID
-                  ) == destination else {
-                return
-            }
-            guard ReleaseNotificationTapValidation.belongsToOwner(
-                ReleaseNotificationTap(
-                    mediaID: destination.mediaID,
-                    ownerUsername: destination.ownerUsername
-                ),
-                username: authStore.mediaLibrarySession.id.username
-            ) else {
-                return
-            }
-            selectedTab = .anime
-            animePath = NavigationPath()
-            animePath.append(MediaDetailDestination(mediaId: destination.mediaID))
+        .onChange(of: routeRequest, initial: true) { _, request in
+            let outcome = ReleaseNotificationRouteCoordinator.consume(
+                router: releaseNotificationRouter,
+                sceneID: notificationSceneID,
+                isReady: request.isReady,
+                isIdentityResolved: request.isIdentityResolved,
+                isActive: request.isActive,
+                ownerUsername: authStore.mediaLibrarySession.id.username
+            )
+            navigationState.apply(outcome)
         }
         .onDisappear {
             releaseNotificationRouter.register(
