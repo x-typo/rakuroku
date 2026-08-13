@@ -783,7 +783,7 @@ struct ReleaseNotificationStoreTests {
         ) == nil)
     }
 
-    @Test("Router targets the most recently active scene and consumes each destination once")
+    @Test("Router lets one active scene claim each uniquely identified destination")
     func routerTakeSemantics() {
         let router = ReleaseNotificationRouter()
         let firstScene = UUID()
@@ -797,17 +797,24 @@ struct ReleaseNotificationStoreTests {
         router.register(sceneID: secondScene, isActive: true)
 
         router.accept(mediaID: 42, ownerUsername: "owner")
-        #expect(router.pendingDestination(for: firstScene) == nil)
-        #expect(router.takePendingDestination(for: firstScene) == nil)
-        #expect(router.takePendingDestination(for: secondScene)?.mediaID == 42)
+        let firstClaim = router.pendingDestination(for: firstScene)
+        let secondClaim = router.pendingDestination(for: secondScene)
+        #expect(firstClaim?.mediaID == 42)
+        #expect(secondClaim?.id == firstClaim?.id)
+        #expect(router.takePendingDestination(for: firstScene)?.id == firstClaim?.id)
         #expect(router.takePendingDestination(for: secondScene) == nil)
 
         router.accept(mediaID: 43, ownerUsername: "owner")
         router.register(sceneID: secondScene, isActive: false)
         #expect(router.takePendingDestination(for: firstScene)?.mediaID == 43)
 
+        router.accept(mediaID: 43, ownerUsername: "owner")
+        let firstID = router.pendingDestination(for: firstScene)?.id
+        router.accept(mediaID: 43, ownerUsername: "owner")
+        #expect(router.pendingDestination(for: firstScene)?.id != firstID)
+
         router.accept(mediaID: 0, ownerUsername: "owner")
-        #expect(router.takePendingDestination(for: firstScene) == nil)
+        #expect(router.takePendingDestination(for: firstScene)?.mediaID == 43)
     }
 
     private func validCandidates(

@@ -8,7 +8,7 @@ import UserNotifications
 @MainActor
 struct ReleaseNotificationRoutingTests {
     @Test("A managed default action crosses payload handling into detail navigation")
-    func managedResponseRoutesEndToEnd() {
+    func managedResponseRoutesEndToEnd() async {
         let router = ReleaseNotificationRouter()
         let sceneID = UUID()
         router.register(sceneID: sceneID, isActive: true)
@@ -31,9 +31,14 @@ struct ReleaseNotificationRoutingTests {
             userInfo: request.content.userInfo,
             router: router
         ))
+        guard let queuedDestination = router.pendingDestination(for: sceneID) else {
+            Issue.record("The accepted response did not queue a destination")
+            return
+        }
         let outcome = consume(router: router, sceneID: sceneID)
         #expect(outcome == .navigate(
             ReleaseNotificationNavigation(
+                id: queuedDestination.id,
                 tab: .anime,
                 detailDestination: MediaDetailDestination(mediaId: 42)
             )
@@ -43,15 +48,25 @@ struct ReleaseNotificationRoutingTests {
         navigationState.apply(outcome)
 
         #expect(navigationState.selectedTab == .anime)
-        #expect(navigationState.pendingNotificationAnimeDestination == MediaDetailDestination(mediaId: 42))
+        #expect(navigationState.pendingNotificationNavigation == ReleaseNotificationNavigation(
+            id: queuedDestination.id,
+            tab: .anime,
+            detailDestination: MediaDetailDestination(mediaId: 42)
+        ))
         #expect(navigationState.animePath.isEmpty)
 
-        navigationState.presentPendingNotificationAnimeDestination()
+        await ReleaseNotificationPresentationCoordinator.present(
+            navigationID: queuedDestination.id,
+            state: navigationState
+        )
 
-        #expect(navigationState.pendingNotificationAnimeDestination == nil)
+        #expect(navigationState.pendingNotificationNavigation == nil)
         #expect(navigationState.animePath.count == 1)
 
-        navigationState.presentPendingNotificationAnimeDestination()
+        await ReleaseNotificationPresentationCoordinator.present(
+            navigationID: queuedDestination.id,
+            state: navigationState
+        )
 
         #expect(navigationState.animePath.count == 1)
     }
@@ -62,10 +77,15 @@ struct ReleaseNotificationRoutingTests {
         let sceneID = UUID()
         router.register(sceneID: sceneID, isActive: true)
         router.accept(mediaID: 42, ownerUsername: "Owner")
+        guard let queuedDestination = router.pendingDestination(for: sceneID) else {
+            Issue.record("The tap did not queue a destination")
+            return
+        }
 
         let outcome = consume(router: router, sceneID: sceneID)
 
         #expect(outcome == .navigate(ReleaseNotificationNavigation(
+            id: queuedDestination.id,
             tab: .anime,
             detailDestination: MediaDetailDestination(mediaId: 42)
         )))
@@ -81,9 +101,14 @@ struct ReleaseNotificationRoutingTests {
         #expect(consume(router: router, sceneID: sceneID) == .none)
 
         router.register(sceneID: sceneID, isActive: true)
+        guard let queuedDestination = router.pendingDestination(for: sceneID) else {
+            Issue.record("Scene activation did not expose the queued destination")
+            return
+        }
 
         #expect(consume(router: router, sceneID: sceneID) == .navigate(
             ReleaseNotificationNavigation(
+                id: queuedDestination.id,
                 tab: .anime,
                 detailDestination: MediaDetailDestination(mediaId: 42)
             )
@@ -103,8 +128,13 @@ struct ReleaseNotificationRoutingTests {
             isIdentityResolved: false
         ) == .deferred)
         #expect(router.pendingDestination(for: sceneID)?.mediaID == 42)
+        guard let queuedDestination = router.pendingDestination(for: sceneID) else {
+            Issue.record("The deferred destination was lost")
+            return
+        }
         #expect(consume(router: router, sceneID: sceneID) == .navigate(
             ReleaseNotificationNavigation(
+                id: queuedDestination.id,
                 tab: .anime,
                 detailDestination: MediaDetailDestination(mediaId: 42)
             )
@@ -124,8 +154,13 @@ struct ReleaseNotificationRoutingTests {
             isActive: false
         ) == .deferred)
         #expect(router.pendingDestination(for: sceneID)?.mediaID == 42)
+        guard let queuedDestination = router.pendingDestination(for: sceneID) else {
+            Issue.record("The deferred destination was lost")
+            return
+        }
         #expect(consume(router: router, sceneID: sceneID) == .navigate(
             ReleaseNotificationNavigation(
+                id: queuedDestination.id,
                 tab: .anime,
                 detailDestination: MediaDetailDestination(mediaId: 42)
             )
@@ -142,6 +177,41 @@ struct ReleaseNotificationRoutingTests {
         #expect(consume(router: router, sceneID: sceneID) == .rejected)
         #expect(router.pendingDestination(for: sceneID) == nil)
         #expect(consume(router: router, sceneID: sceneID) == .none)
+    }
+
+    @Test("A newer same-media tap cannot be cleared by an older presentation task")
+    func sameMediaTapHasUniquePresentationIdentity() async {
+        let navigationState = ContentNavigationState()
+        let firstID = UUID()
+        let secondID = UUID()
+        let destination = MediaDetailDestination(mediaId: 42)
+
+        navigationState.apply(.navigate(ReleaseNotificationNavigation(
+            id: firstID,
+            tab: .anime,
+            detailDestination: destination
+        )))
+        navigationState.apply(.navigate(ReleaseNotificationNavigation(
+            id: secondID,
+            tab: .anime,
+            detailDestination: destination
+        )))
+
+        await ReleaseNotificationPresentationCoordinator.present(
+            navigationID: firstID,
+            state: navigationState
+        )
+
+        #expect(navigationState.pendingNotificationNavigation?.id == secondID)
+        #expect(navigationState.animePath.isEmpty)
+
+        await ReleaseNotificationPresentationCoordinator.present(
+            navigationID: secondID,
+            state: navigationState
+        )
+
+        #expect(navigationState.pendingNotificationNavigation == nil)
+        #expect(navigationState.animePath.count == 1)
     }
 
     private func consume(

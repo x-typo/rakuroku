@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OSLog
 import UserNotifications
 
 enum ReleaseNotificationAuthorizationStatus: Equatable, Sendable {
@@ -819,43 +820,29 @@ final class ReleaseNotificationStore {
 @MainActor @Observable
 final class ReleaseNotificationRouter {
     struct Destination: Hashable {
+        let id: UUID
         let mediaID: Int
         let ownerUsername: String
-        let targetSceneID: UUID?
     }
 
     static let shared = ReleaseNotificationRouter()
 
     private(set) var pendingDestination: Destination?
-
-    @ObservationIgnored
-    private var activeSceneIDs: [UUID] = []
+    private var activeSceneIDs = Set<UUID>()
 
     init() {}
 
     func register(sceneID: UUID, isActive: Bool) {
-        activeSceneIDs.removeAll { $0 == sceneID }
+        var updatedSceneIDs = activeSceneIDs
         if isActive {
-            activeSceneIDs.append(sceneID)
-            if let pendingDestination,
-               pendingDestination.targetSceneID == nil {
-                self.pendingDestination = Destination(
-                    mediaID: pendingDestination.mediaID,
-                    ownerUsername: pendingDestination.ownerUsername,
-                    targetSceneID: sceneID
-                )
-            }
+            updatedSceneIDs.insert(sceneID)
+        } else {
+            updatedSceneIDs.remove(sceneID)
         }
-
-        guard let pendingDestination,
-              pendingDestination.targetSceneID == sceneID,
-              !isActive else {
-            return
-        }
-        self.pendingDestination = Destination(
-            mediaID: pendingDestination.mediaID,
-            ownerUsername: pendingDestination.ownerUsername,
-            targetSceneID: activeSceneIDs.last
+        activeSceneIDs = updatedSceneIDs
+        ReleaseNotificationRouteDiagnostics.sceneRegistrationChanged(
+            isActive: isActive,
+            activeSceneCount: activeSceneIDs.count
         )
     }
 
@@ -865,17 +852,18 @@ final class ReleaseNotificationRouter {
             return
         }
         pendingDestination = Destination(
+            id: UUID(),
             mediaID: mediaID,
-            ownerUsername: ownerUsername,
-            targetSceneID: activeSceneIDs.last
+            ownerUsername: ownerUsername
+        )
+        ReleaseNotificationRouteDiagnostics.destinationQueued(
+            mediaID: mediaID,
+            activeSceneCount: activeSceneIDs.count
         )
     }
 
     func pendingDestination(for sceneID: UUID) -> Destination? {
-        guard let pendingDestination,
-              pendingDestination.targetSceneID == sceneID else {
-            return nil
-        }
+        guard activeSceneIDs.contains(sceneID) else { return nil }
         return pendingDestination
     }
 
@@ -883,5 +871,56 @@ final class ReleaseNotificationRouter {
         guard let destination = pendingDestination(for: sceneID) else { return nil }
         pendingDestination = nil
         return destination
+    }
+}
+
+enum ReleaseNotificationRouteDiagnostics {
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "Rakuroku",
+        category: "ReleaseNotifications"
+    )
+
+    nonisolated static func responseReceived(isManaged: Bool, isDefaultAction: Bool) {
+        logger.notice(
+            "Response received; managed: \(isManaged, privacy: .public), default action: \(isDefaultAction, privacy: .public)"
+        )
+    }
+
+    nonisolated static func responseAccepted(mediaID: Int) {
+        logger.notice("Response accepted for media ID \(mediaID, privacy: .private(mask: .hash))")
+    }
+
+    nonisolated static func responseRejected() {
+        logger.notice("Response rejected during payload validation")
+    }
+
+    nonisolated static func destinationQueued(mediaID: Int, activeSceneCount: Int) {
+        logger.notice(
+            "Destination queued for media ID \(mediaID, privacy: .private(mask: .hash)); active scenes: \(activeSceneCount, privacy: .public)"
+        )
+    }
+
+    nonisolated static func sceneRegistrationChanged(isActive: Bool, activeSceneCount: Int) {
+        logger.debug(
+            "Scene registration changed; active: \(isActive, privacy: .public), active scenes: \(activeSceneCount, privacy: .public)"
+        )
+    }
+
+    nonisolated static func navigationDeferred(mediaID: Int) {
+        logger.notice("Navigation deferred for media ID \(mediaID, privacy: .private(mask: .hash))")
+    }
+
+    nonisolated static func navigationRejected(mediaID: Int) {
+        logger.notice("Navigation rejected for media ID \(mediaID, privacy: .private(mask: .hash))")
+    }
+
+    nonisolated static func navigationAccepted(mediaID: Int) {
+        logger.notice("Navigation accepted for media ID \(mediaID, privacy: .private(mask: .hash))")
+    }
+
+    nonisolated static func navigationPresented(mediaID: Int, pathCount: Int) {
+        logger.notice(
+            "Navigation presented for media ID \(mediaID, privacy: .private(mask: .hash)); path count: \(pathCount, privacy: .public)"
+        )
     }
 }
