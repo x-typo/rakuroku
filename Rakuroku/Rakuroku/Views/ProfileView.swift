@@ -1,8 +1,14 @@
 import SwiftUI
 
 struct ProfileView: View {
+    private struct LoadRequest: Hashable {
+        let sessionID: MediaLibrarySession.ID
+        let accessToken: String
+    }
 
     @Environment(AuthStore.self) private var authStore
+    @Environment(ReleaseNotificationStore.self) private var releaseNotificationStore
+    @Environment(\.openURL) private var openURL
 
     @State private var user: AniListUser?
     @State private var activities: [ListActivity] = []
@@ -15,38 +21,25 @@ struct ProfileView: View {
         Group {
             if !authStore.isAuthenticated {
                 signedOutView
-            } else if loading {
-                ProgressView().tint(Theme.primary)
-            } else if let error {
-                VStack(spacing: 16) {
-                    Text(error).foregroundStyle(Theme.error)
-                    Button("Retry") { Task { await loadData() } }
-                        .buttonStyle(.borderedProminent).tint(Theme.primary)
-                    Button("Sign Out") { authStore.logout() }
-                        .buttonStyle(.bordered)
-                        .tint(Theme.textSecondary)
-                }
-            } else if let user {
-                ScrollView {
-                    VStack(spacing: 0) {
-                        avatarSection(user)
-                        statsSection(user)
-                        authSection
-                        activitySection
-                    }
-                    .padding(.vertical, 32)
-                }
-                .refreshable { await loadData() }
             } else {
-                Text("No user data available")
-                    .foregroundStyle(Theme.textSecondary)
+                signedInView
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.background)
-        .task { if authStore.isAuthenticated { await loadData() } }
-        .onChange(of: authStore.isAuthenticated) { _, isAuth in
-            if isAuth { Task { await loadData() } }
+        .task(id: loadRequest) {
+            guard let loadRequest else {
+                user = nil
+                activities = []
+                loading = authStore.isAuthenticated
+                error = nil
+                return
+            }
+            user = nil
+            activities = []
+            loading = true
+            error = nil
+            await loadData(for: loadRequest)
         }
         .sheet(isPresented: $showManualTokenSheet) {
             manualTokenSheet
@@ -54,51 +47,119 @@ struct ProfileView: View {
     }
 
     @ViewBuilder
-    private var signedOutView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "person.circle")
-                .font(.system(size: 50))
-                .foregroundStyle(Theme.textSecondary)
-            Text("Sign in to see your profile")
-                .font(.subheadline)
-                .foregroundStyle(Theme.textSecondary)
-
-            Button {
-                Task { await authStore.login() }
-            } label: {
-                Label("Sign in with AniList", systemImage: "person.crop.circle.badge.checkmark")
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(Theme.textPrimary)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                    .background(Theme.primary)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
-
-            Button {
-                openManualTokenSheet()
-            } label: {
-                Label("Paste Access Token", systemImage: "key")
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(Theme.textPrimary)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                    .background(Theme.surfaceLight)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
-
-            if let authError = authStore.authError {
-                Button { authStore.clearAuthError() } label: {
-                    Text(authError)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(Theme.error)
-                        .padding(12)
-                        .frame(maxWidth: .infinity)
-                        .background(Theme.error.opacity(0.15))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+    private var signedInView: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                if !authStore.isMediaLibraryIdentityResolved {
+                    if let resolutionError = authStore.mediaLibraryIdentityResolutionError {
+                        VStack(spacing: 16) {
+                            Text(resolutionError)
+                                .foregroundStyle(Theme.error)
+                                .multilineTextAlignment(.center)
+                            Button("Retry Account Verification") {
+                                authStore.retryMediaLibraryIdentityResolution()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(Theme.primary)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 16)
+                    } else {
+                        ProgressView()
+                            .tint(Theme.primary)
+                            .padding(.bottom, 24)
+                    }
+                } else if loading {
+                    ProgressView()
+                        .tint(Theme.primary)
+                        .padding(.bottom, 24)
+                } else if let error {
+                    VStack(spacing: 16) {
+                        Text(error).foregroundStyle(Theme.error)
+                        Button("Retry") {
+                            guard let loadRequest else { return }
+                            Task { await loadData(for: loadRequest) }
+                        }
+                            .buttonStyle(.borderedProminent)
+                            .tint(Theme.primary)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
+                } else if let user {
+                    avatarSection(user)
+                    statsSection(user)
+                } else {
+                    Text("No user data available")
+                        .foregroundStyle(Theme.textSecondary)
+                        .padding(.bottom, 16)
                 }
-                .padding(.horizontal, 16)
+
+                notificationSection
+                authSection
+
+                if !loading, error == nil, user != nil {
+                    activitySection
+                }
             }
+            .padding(.vertical, 32)
+        }
+        .refreshable {
+            guard let loadRequest else { return }
+            await loadData(for: loadRequest)
+        }
+    }
+
+    @ViewBuilder
+    private var signedOutView: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                Image(systemName: "person.circle")
+                    .font(.system(size: 50))
+                    .foregroundStyle(Theme.textSecondary)
+                Text("Sign in to see your profile")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.textSecondary)
+
+                Button {
+                    Task { await authStore.login() }
+                } label: {
+                    Label("Sign in with AniList", systemImage: "person.crop.circle.badge.checkmark")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .background(Theme.primary)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+
+                Button {
+                    openManualTokenSheet()
+                } label: {
+                    Label("Paste Access Token", systemImage: "key")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .background(Theme.surfaceLight)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+
+                if let authError = authStore.authError {
+                    Button { authStore.clearAuthError() } label: {
+                        Text(authError)
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(Theme.error)
+                            .padding(12)
+                            .frame(maxWidth: .infinity)
+                            .background(Theme.error.opacity(0.15))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .padding(.horizontal, 16)
+                }
+
+                notificationSection
+            }
+            .padding(.vertical, 32)
         }
     }
 
@@ -145,6 +206,71 @@ struct ProfileView: View {
         .padding(.vertical, 16)
         .background(Theme.surface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    @ViewBuilder
+    private var notificationSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle(
+                "Release Notifications",
+                isOn: Binding(
+                    get: { releaseNotificationStore.isEnabled },
+                    set: { enabled in
+                        Task { await releaseNotificationStore.setEnabled(enabled) }
+                    }
+                )
+            )
+            .font(.headline)
+            .tint(Theme.primary)
+            .disabled(releaseNotificationStore.isUpdatingPreference)
+
+            Text("Only currently releasing anime on your Watching list qualify. Being behind does not stop future episode alerts.")
+                .font(.caption)
+                .foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Rakuroku schedules only each title's next episode known to AniList at its reported airing time. It does not refresh in the background, so open the app to schedule later episodes.")
+                .font(.caption)
+                .foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("iOS limits pending local alerts, so Rakuroku keeps the nearest releases when space is limited.")
+                .font(.caption)
+                .foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if releaseNotificationStore.isEnabled {
+                Text("Scheduled: \(releaseNotificationStore.scheduledCount)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.textPrimary)
+            }
+
+            if releaseNotificationStore.authorizationStatus == .denied {
+                Text("Notifications are blocked in iOS Settings.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.error)
+
+                Button("Open Settings") {
+                    guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else {
+                        return
+                    }
+                    openURL(settingsURL)
+                }
+                .buttonStyle(.bordered)
+                .tint(Theme.primary)
+            }
+
+            if let schedulingError = releaseNotificationStore.schedulingError {
+                Text(schedulingError)
+                    .font(.caption)
+                    .foregroundStyle(Theme.error)
+            }
+        }
+        .padding(16)
+        .background(Theme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 
     @ViewBuilder
@@ -312,28 +438,58 @@ struct ProfileView: View {
         return "\(status) \(title)"
     }
 
-    private func loadData() async {
+    private var loadRequest: LoadRequest? {
+        guard authStore.isMediaLibraryIdentityResolved,
+              let accessToken = authStore.accessToken else {
+            return nil
+        }
+        return LoadRequest(
+            sessionID: authStore.mediaLibrarySession.id,
+            accessToken: accessToken
+        )
+    }
+
+    private func loadData(for request: LoadRequest) async {
         if user == nil { loading = true }
         error = nil
+        let session = authStore.mediaLibrarySession
+        guard session.id == request.sessionID,
+              session.accessToken == request.accessToken,
+              authStore.isMediaLibraryIdentityResolved else {
+            return
+        }
         do {
-            let userData: AniListUser
-            if let token = authStore.accessToken {
-                userData = try await AniListClient.shared.fetchAuthenticatedUser(accessToken: token)
-                authStore.updateUsername(userData.name)
-            } else {
-                userData = try await AniListClient.shared.fetchUser(name: authStore.username)
+            let userData = try await AniListClient.shared.fetchAuthenticatedUser(
+                accessToken: request.accessToken
+            )
+            guard authStore.isMediaLibraryIdentityResolved,
+                  authStore.isCurrent(session) else {
+                return
             }
             user = userData
             loading = false
-            activities = (try? await AniListClient.shared.fetchUserActivities(userId: userData.id)) ?? []
+            let loadedActivities = (try? await AniListClient.shared.fetchUserActivities(
+                userId: userData.id
+            )) ?? []
+            guard authStore.isMediaLibraryIdentityResolved,
+                  authStore.isCurrent(session) else {
+                return
+            }
+            activities = loadedActivities
         } catch let error as AniListError where error.isAuthenticationFailure {
+            guard authStore.logoutIfCurrent(
+                session,
+                authError: "AniList session expired. Sign in again."
+            ) else {
+                return
+            }
             user = nil
             activities = []
             self.error = nil
             loading = false
-            authStore.logout(authError: "AniList session expired. Sign in again.")
         } catch where error.isCancellation {
         } catch {
+            guard authStore.isCurrent(session) else { return }
             self.error = error.localizedDescription
             loading = false
         }

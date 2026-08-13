@@ -282,6 +282,20 @@ final class MediaLibraryStore {
         )
     }
 
+    func releaseNotificationCandidates(
+        activeSessionID: MediaLibrarySession.ID,
+        nowEpoch: Int
+    ) -> [ReleaseNotificationCandidate]? {
+        let animeState = state(for: .anime)
+        return ReleaseNotificationPlan.candidates(
+            entries: animeState.entries,
+            hasUsableData: animeState.hasUsableData,
+            snapshotSessionID: animeState.snapshotSessionID,
+            activeSessionID: activeSessionID,
+            nowEpoch: nowEpoch
+        )
+    }
+
     func beginMutation(
         mediaID: Int,
         type: MediaType,
