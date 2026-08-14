@@ -129,10 +129,11 @@ struct ReleaseNotificationRoutingTests {
         #expect(consume(router: router, sceneID: sceneID) == .none)
     }
 
-    @Test("A cold tap waits for scene registration before routing")
-    func coldTapWaitsForSceneRegistration() {
+    @Test("Scene activation routes a cold tap queued before registration")
+    func sceneActivationRoutesColdTap() {
         let router = ReleaseNotificationRouter()
         let sceneID = UUID()
+        let navigationState = ContentNavigationState()
         router.accept(
             notificationIdentifier: "cold-42",
             mediaID: 42,
@@ -141,22 +142,33 @@ struct ReleaseNotificationRoutingTests {
 
         #expect(consume(router: router, sceneID: sceneID) == .none)
 
-        router.register(sceneID: sceneID, isActive: true)
-        guard let queuedDestination = router.pendingDestination(for: sceneID) else {
-            Issue.record("Scene activation did not expose the queued destination")
+        let outcome = ReleaseNotificationRouteCoordinator.registerAndConsume(
+            router: router,
+            sceneID: sceneID,
+            isReady: true,
+            isIdentityResolved: true,
+            isActive: true,
+            ownerUsername: "owner"
+        )
+        guard case let .navigate(navigation) = outcome else {
+            Issue.record("Scene activation did not route the queued destination")
             return
         }
-
-        #expect(consume(router: router, sceneID: sceneID) == .navigate(
+        #expect(outcome == .navigate(
             ReleaseNotificationNavigation(
-                id: queuedDestination.id,
+                id: navigation.id,
                 tab: .anime,
                 detailDestination: ReleaseNotificationDetailDestination(
-                    id: queuedDestination.id,
+                    id: navigation.id,
                     mediaId: 42
                 )
             )
         ))
+        #expect(router.claimedDestination(for: sceneID)?.id == navigation.id)
+
+        navigationState.apply(outcome)
+        #expect(navigationState.selectedTab == .anime)
+        #expect(navigationState.pendingNotificationNavigation?.id == navigation.id)
     }
 
     @Test("Unresolved identity defers without consuming the tap")
@@ -360,6 +372,42 @@ struct ReleaseNotificationRoutingTests {
         #expect(router.claimedDestination(for: firstScene) == destination)
         #expect(router.pendingDestination(for: secondScene) == nil)
         #expect(consume(router: router, sceneID: secondScene) == .none)
+    }
+
+    @Test("Scene-targeted ingress is visible only to its destination scene")
+    func targetedSceneOwnsDestination() throws {
+        let router = ReleaseNotificationRouter()
+        let firstScene = UUID()
+        let targetScene = UUID()
+        router.register(sceneID: firstScene, isActive: true)
+        router.register(sceneID: targetScene, isActive: true)
+
+        router.accept(
+            notificationIdentifier: "targeted-scene",
+            mediaID: 42,
+            ownerUsername: "Owner"
+        )
+        let unboundDestination = try #require(router.pendingDestination(for: firstScene))
+
+        #expect(!router.accept(
+            notificationIdentifier: "targeted-scene",
+            mediaID: 42,
+            ownerUsername: "Owner",
+            targetSceneID: targetScene
+        ))
+        #expect(router.pendingDestination(for: firstScene) == nil)
+        #expect(router.pendingDestination(for: targetScene)?.id == unboundDestination.id)
+        #expect(consume(router: router, sceneID: firstScene) == .none)
+        #expect(consume(router: router, sceneID: targetScene) == .navigate(
+            ReleaseNotificationNavigation(
+                id: unboundDestination.id,
+                tab: .anime,
+                detailDestination: ReleaseNotificationDetailDestination(
+                    id: unboundDestination.id,
+                    mediaId: 42
+                )
+            )
+        ))
     }
 
     @Test("A canceled or hidden presentation retains the claimed tap")

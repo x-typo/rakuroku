@@ -824,6 +824,7 @@ final class ReleaseNotificationRouter {
         let notificationIdentifier: String
         let mediaID: Int
         let ownerUsername: String
+        let targetSceneID: UUID?
     }
 
     static let shared = ReleaseNotificationRouter()
@@ -857,7 +858,8 @@ final class ReleaseNotificationRouter {
     func accept(
         notificationIdentifier: String,
         mediaID: Int,
-        ownerUsername: String
+        ownerUsername: String,
+        targetSceneID: UUID? = nil
     ) -> Bool {
         guard !notificationIdentifier.isEmpty,
               mediaID > 0,
@@ -865,6 +867,19 @@ final class ReleaseNotificationRouter {
             return false
         }
         guard acceptedNotificationIdentifiers.insert(notificationIdentifier).inserted else {
+            if let targetSceneID,
+               pendingDestination?.notificationIdentifier == notificationIdentifier,
+               pendingDestination?.targetSceneID == nil,
+               let pendingDestination {
+                self.pendingDestination = Destination(
+                    id: pendingDestination.id,
+                    notificationIdentifier: pendingDestination.notificationIdentifier,
+                    mediaID: pendingDestination.mediaID,
+                    ownerUsername: pendingDestination.ownerUsername,
+                    targetSceneID: targetSceneID
+                )
+                claimedSceneID = nil
+            }
             ReleaseNotificationRouteDiagnostics.duplicateResponseIgnored(mediaID: mediaID)
             return false
         }
@@ -877,7 +892,8 @@ final class ReleaseNotificationRouter {
             id: UUID(),
             notificationIdentifier: notificationIdentifier,
             mediaID: mediaID,
-            ownerUsername: ownerUsername
+            ownerUsername: ownerUsername,
+            targetSceneID: targetSceneID
         )
         claimedSceneID = nil
         ReleaseNotificationRouteDiagnostics.destinationQueued(
@@ -889,6 +905,8 @@ final class ReleaseNotificationRouter {
 
     func pendingDestination(for sceneID: UUID) -> Destination? {
         guard activeSceneIDs.contains(sceneID),
+              pendingDestination?.targetSceneID == nil
+                || pendingDestination?.targetSceneID == sceneID,
               claimedSceneID == nil || claimedSceneID == sceneID else {
             return nil
         }

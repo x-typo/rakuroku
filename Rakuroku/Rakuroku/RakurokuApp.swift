@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import UserNotifications
 
@@ -25,7 +26,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
             name: nil,
             sessionRole: connectingSceneSession.role
         )
-        configuration.delegateClass = SceneDelegate.self
+        if connectingSceneSession.role == .windowApplication {
+            configuration.delegateClass = SceneDelegate.self
+        }
         return configuration
     }
 
@@ -46,14 +49,20 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
+        let targetSceneID = await MainActor.run {
+            (response.targetScene?.delegate as? SceneDelegate)?.notificationSceneID
+        }
         await ReleaseNotificationResponseIngress.receive(
             response,
-            source: .notificationCenter
+            source: .notificationCenter,
+            targetSceneID: targetSceneID
         )
     }
 }
 
-final class SceneDelegate: NSObject, UIWindowSceneDelegate {
+final class SceneDelegate: NSObject, UIWindowSceneDelegate, ObservableObject {
+    @Published private(set) var notificationSceneID = UUID()
+
     func scene(
         _ scene: UIScene,
         willConnectTo session: UISceneSession,
@@ -63,7 +72,8 @@ final class SceneDelegate: NSObject, UIWindowSceneDelegate {
         Task {
             await ReleaseNotificationResponseIngress.receive(
                 response,
-                source: .sceneConnection
+                source: .sceneConnection,
+                targetSceneID: notificationSceneID
             )
         }
     }
@@ -77,7 +87,8 @@ enum ReleaseNotificationResponseSource: String {
 enum ReleaseNotificationResponseIngress {
     nonisolated static func receive(
         _ response: UNNotificationResponse,
-        source: ReleaseNotificationResponseSource
+        source: ReleaseNotificationResponseSource,
+        targetSceneID: UUID?
     ) async {
         let request = response.notification.request
         ReleaseNotificationRouteDiagnostics.responseReceived(
@@ -89,6 +100,7 @@ enum ReleaseNotificationResponseIngress {
             identifier: request.identifier,
             actionIdentifier: response.actionIdentifier,
             userInfo: request.content.userInfo,
+            targetSceneID: targetSceneID,
             router: ReleaseNotificationRouter.shared
         )
     }
@@ -101,6 +113,7 @@ enum ReleaseNotificationResponseHandler {
         identifier: String,
         actionIdentifier: String,
         userInfo: [AnyHashable: Any],
+        targetSceneID: UUID? = nil,
         router: ReleaseNotificationRouter
     ) -> Bool {
         guard let tap = ReleaseNotificationTapValidation.parse(
@@ -115,7 +128,8 @@ enum ReleaseNotificationResponseHandler {
         router.accept(
             notificationIdentifier: identifier,
             mediaID: tap.mediaID,
-            ownerUsername: tap.ownerUsername
+            ownerUsername: tap.ownerUsername,
+            targetSceneID: targetSceneID
         )
         return true
     }
@@ -341,6 +355,25 @@ enum ReleaseNotificationRouteCoordinator {
             )
         )
     }
+
+    static func registerAndConsume(
+        router: ReleaseNotificationRouter,
+        sceneID: UUID,
+        isReady: Bool,
+        isIdentityResolved: Bool,
+        isActive: Bool,
+        ownerUsername: String
+    ) -> Outcome {
+        router.register(sceneID: sceneID, isActive: isActive)
+        return consume(
+            router: router,
+            sceneID: sceneID,
+            isReady: isReady,
+            isIdentityResolved: isIdentityResolved,
+            isActive: isActive,
+            ownerUsername: ownerUsername
+        )
+    }
 }
 
 // Each tab gets its own NavigationStack so navigation state is independent per tab
@@ -355,16 +388,17 @@ struct ContentView: View {
     private struct ReleaseNotificationPresentationRequest: Hashable {
         let navigationID: UUID?
         let isAnimeStackPresented: Bool
+        let isActive: Bool
     }
 
     @Environment(AuthStore.self) private var authStore
     @Environment(MediaLibraryStore.self) private var mediaLibraryStore
     @Environment(ReleaseNotificationStore.self) private var releaseNotificationStore
     @Environment(ReleaseNotificationRouter.self) private var releaseNotificationRouter
+    @EnvironmentObject private var notificationScene: SceneDelegate
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var ready = false
-    @State private var notificationSceneID = UUID()
     @State private var navigationState = ContentNavigationState()
     @State private var isAnimeStackPresented = false
 
@@ -380,12 +414,13 @@ struct ContentView: View {
             isIdentityResolved: authStore.isMediaLibraryIdentityResolved,
             isActive: scenePhase == .active,
             destination: releaseNotificationRouter.pendingDestination(
-                for: notificationSceneID
+                for: notificationScene.notificationSceneID
             )
         )
         let notificationPresentationRequest = ReleaseNotificationPresentationRequest(
             navigationID: navigationState.pendingNotificationNavigation?.id,
-            isAnimeStackPresented: isAnimeStackPresented
+            isAnimeStackPresented: isAnimeStackPresented,
+            isActive: scenePhase == .active
         )
 
         Group {
@@ -459,19 +494,26 @@ struct ContentView: View {
             }
             ReleaseNotificationPresentationCoordinator.present(
                 navigationID: navigationID,
-                sceneID: notificationSceneID,
+                sceneID: notificationScene.notificationSceneID,
                 state: navigationState,
                 router: releaseNotificationRouter,
                 canPresent: {
-                    !Task.isCancelled && isAnimeStackPresented
+                    !Task.isCancelled
+                        && isAnimeStackPresented
+                        && scenePhase == .active
                 }
             )
         }
         .task(id: scenePhase) {
-            releaseNotificationRouter.register(
-                sceneID: notificationSceneID,
-                isActive: scenePhase == .active
+            let outcome = ReleaseNotificationRouteCoordinator.registerAndConsume(
+                router: releaseNotificationRouter,
+                sceneID: notificationScene.notificationSceneID,
+                isReady: ready,
+                isIdentityResolved: authStore.isMediaLibraryIdentityResolved,
+                isActive: scenePhase == .active,
+                ownerUsername: authStore.mediaLibrarySession.id.username
             )
+            navigationState.apply(outcome)
             guard scenePhase == .active else { return }
             if !authStore.isMediaLibraryIdentityResolved,
                authStore.mediaLibraryIdentityResolutionError != nil {
@@ -482,7 +524,7 @@ struct ContentView: View {
         .onChange(of: routeRequest, initial: true) { _, request in
             let outcome = ReleaseNotificationRouteCoordinator.consume(
                 router: releaseNotificationRouter,
-                sceneID: notificationSceneID,
+                sceneID: notificationScene.notificationSceneID,
                 isReady: request.isReady,
                 isIdentityResolved: request.isIdentityResolved,
                 isActive: request.isActive,
@@ -492,7 +534,7 @@ struct ContentView: View {
         }
         .onDisappear {
             releaseNotificationRouter.register(
-                sceneID: notificationSceneID,
+                sceneID: notificationScene.notificationSceneID,
                 isActive: false
             )
         }
