@@ -799,11 +799,15 @@ struct ReleaseNotificationStoreTests {
 
         router.register(sceneID: secondScene, isActive: true)
 
-        router.accept(notificationIdentifier: "42", mediaID: 42, ownerUsername: "owner")
+        router.accept(
+            notificationIdentifier: "42",
+            mediaID: 42,
+            ownerUsername: "owner",
+            targetSceneID: firstScene
+        )
         let firstClaim = try #require(router.pendingDestination(for: firstScene))
-        let secondClaim = try #require(router.pendingDestination(for: secondScene))
         #expect(firstClaim.mediaID == 42)
-        #expect(secondClaim.id == firstClaim.id)
+        #expect(router.pendingDestination(for: secondScene) == nil)
         #expect(router.claim(destinationID: firstClaim.id, for: firstScene))
         #expect(router.pendingDestination(for: secondScene) == nil)
         #expect(router.acknowledge(destinationID: firstClaim.id, for: firstScene))

@@ -7,6 +7,31 @@ import UserNotifications
 @Suite("Release notification routing")
 @MainActor
 struct ReleaseNotificationRoutingTests {
+    @Test("Delegate delivery runs on MainActor and completes once after routing")
+    func delegateDeliveryCompletesAfterRouting() async {
+        let recorder = ReleaseNotificationDeliveryRecorder()
+
+        await withCheckedContinuation { continuation in
+            Task.detached {
+                ReleaseNotificationResponseDelivery.deliverOnMain(
+                    route: {
+                        MainActor.preconditionIsolated()
+                        recorder.record("route")
+                    },
+                    completion: {
+                        MainActor.preconditionIsolated()
+                        let completionCount = recorder.record("completion")
+                        if completionCount == 1 {
+                            continuation.resume()
+                        }
+                    }
+                )
+            }
+        }
+
+        #expect(recorder.events == ["route", "completion"])
+    }
+
     @Test("A managed default action crosses payload handling into detail navigation")
     func managedResponseRoutesEndToEnd() {
         let router = ReleaseNotificationRouter()
@@ -49,48 +74,22 @@ struct ReleaseNotificationRoutingTests {
         #expect(router.pendingDestination(for: sceneID) == queuedDestination)
 
         let navigationState = ContentNavigationState()
-        navigationState.apply(outcome)
+        #expect(ReleaseNotificationPresentationCoordinator.present(
+            outcome: outcome,
+            sceneID: sceneID,
+            state: navigationState,
+            router: router
+        ))
 
         #expect(navigationState.selectedTab == .anime)
-        #expect(navigationState.pendingNotificationNavigation == ReleaseNotificationNavigation(
-            id: queuedDestination.id,
-            tab: .anime,
-            detailDestination: ReleaseNotificationDetailDestination(
-                id: queuedDestination.id,
-                mediaId: 42
-            )
-        ))
-        #expect(navigationState.animePath.isEmpty)
-
-        #expect(!ReleaseNotificationPresentationCoordinator.present(
-            navigationID: queuedDestination.id,
-            sceneID: sceneID,
-            state: navigationState,
-            router: router,
-            canPresent: { false }
-        ))
-
-        #expect(navigationState.pendingNotificationNavigation?.id == queuedDestination.id)
-        #expect(router.pendingDestination(for: sceneID) == queuedDestination)
-
-        #expect(ReleaseNotificationPresentationCoordinator.present(
-            navigationID: queuedDestination.id,
-            sceneID: sceneID,
-            state: navigationState,
-            router: router,
-            canPresent: { true }
-        ))
-
-        #expect(navigationState.pendingNotificationNavigation == nil)
         #expect(navigationState.animePath.count == 1)
         #expect(router.pendingDestination(for: sceneID) == nil)
 
         #expect(!ReleaseNotificationPresentationCoordinator.present(
-            navigationID: queuedDestination.id,
+            outcome: outcome,
             sceneID: sceneID,
             state: navigationState,
-            router: router,
-            canPresent: { true }
+            router: router
         ))
 
         #expect(navigationState.animePath.count == 1)
@@ -142,14 +141,12 @@ struct ReleaseNotificationRoutingTests {
 
         #expect(consume(router: router, sceneID: sceneID) == .none)
 
-        let outcome = ReleaseNotificationRouteCoordinator.registerAndConsume(
+        ReleaseNotificationSceneLifecycleCoordinator.update(
             router: router,
             sceneID: sceneID,
-            isReady: true,
-            isIdentityResolved: true,
-            isActive: true,
-            ownerUsername: "owner"
+            isActive: true
         )
+        let outcome = consume(router: router, sceneID: sceneID)
         guard case let .navigate(navigation) = outcome else {
             Issue.record("Scene activation did not route the queued destination")
             return
@@ -166,9 +163,15 @@ struct ReleaseNotificationRoutingTests {
         ))
         #expect(router.claimedDestination(for: sceneID)?.id == navigation.id)
 
-        navigationState.apply(outcome)
+        #expect(ReleaseNotificationPresentationCoordinator.present(
+            outcome: outcome,
+            sceneID: sceneID,
+            state: navigationState,
+            router: router
+        ))
         #expect(navigationState.selectedTab == .anime)
-        #expect(navigationState.pendingNotificationNavigation?.id == navigation.id)
+        #expect(navigationState.animePath.count == 1)
+        #expect(router.pendingDestination(for: sceneID) == nil)
     }
 
     @Test("Unresolved identity defers without consuming the tap")
@@ -266,13 +269,12 @@ struct ReleaseNotificationRoutingTests {
             ownerUsername: "Owner"
         )
         let firstDestination = try #require(router.pendingDestination(for: sceneID))
-        navigationState.apply(consume(router: router, sceneID: sceneID))
+        let firstOutcome = consume(router: router, sceneID: sceneID)
         #expect(ReleaseNotificationPresentationCoordinator.present(
-            navigationID: firstDestination.id,
+            outcome: firstOutcome,
             sceneID: sceneID,
             state: navigationState,
-            router: router,
-            canPresent: { true }
+            router: router
         ))
 
         router.accept(
@@ -282,16 +284,14 @@ struct ReleaseNotificationRoutingTests {
         )
         let secondDestination = try #require(router.pendingDestination(for: sceneID))
         #expect(secondDestination.id != firstDestination.id)
-        navigationState.apply(consume(router: router, sceneID: sceneID))
+        let secondOutcome = consume(router: router, sceneID: sceneID)
         #expect(ReleaseNotificationPresentationCoordinator.present(
-            navigationID: secondDestination.id,
+            outcome: secondOutcome,
             sceneID: sceneID,
             state: navigationState,
-            router: router,
-            canPresent: { true }
+            router: router
         ))
 
-        #expect(navigationState.pendingNotificationNavigation == nil)
         #expect(navigationState.animePath.count == 1)
         #expect(router.pendingDestination(for: sceneID) == nil)
     }
@@ -344,8 +344,8 @@ struct ReleaseNotificationRoutingTests {
         #expect(router.pendingDestination(for: sceneID) == nil)
     }
 
-    @Test("One active scene reserves a tap until presentation")
-    func oneSceneReservesDestination() throws {
+    @Test("An unbound tap waits while multiple scenes are active")
+    func ambiguousUnboundTapWaitsForOneScene() throws {
         let router = ReleaseNotificationRouter()
         let firstScene = UUID()
         let secondScene = UUID()
@@ -356,8 +356,15 @@ struct ReleaseNotificationRoutingTests {
             mediaID: 42,
             ownerUsername: "Owner"
         )
+        #expect(router.pendingDestination(for: firstScene) == nil)
+        #expect(router.pendingDestination(for: secondScene) == nil)
+
+        ReleaseNotificationSceneLifecycleCoordinator.update(
+            router: router,
+            sceneID: secondScene,
+            isActive: false
+        )
         let destination = try #require(router.pendingDestination(for: firstScene))
-        #expect(router.pendingDestination(for: secondScene) == destination)
 
         #expect(consume(router: router, sceneID: firstScene) == .navigate(
             ReleaseNotificationNavigation(
@@ -371,7 +378,6 @@ struct ReleaseNotificationRoutingTests {
         ))
         #expect(router.claimedDestination(for: firstScene) == destination)
         #expect(router.pendingDestination(for: secondScene) == nil)
-        #expect(consume(router: router, sceneID: secondScene) == .none)
     }
 
     @Test("Scene-targeted ingress is visible only to its destination scene")
@@ -387,7 +393,7 @@ struct ReleaseNotificationRoutingTests {
             mediaID: 42,
             ownerUsername: "Owner"
         )
-        let unboundDestination = try #require(router.pendingDestination(for: firstScene))
+        let unboundDestination = try #require(router.pendingDestination)
 
         #expect(!router.accept(
             notificationIdentifier: "targeted-scene",
@@ -410,30 +416,72 @@ struct ReleaseNotificationRoutingTests {
         ))
     }
 
-    @Test("A canceled or hidden presentation retains the claimed tap")
-    func blockedPresentationRetainsClaim() throws {
+    @Test("Disconnecting a target releases its tap to the remaining scene")
+    func disconnectedTargetReleasesDestination() throws {
+        let router = ReleaseNotificationRouter()
+        let remainingScene = UUID()
+        let disconnectedScene = UUID()
+        router.register(sceneID: remainingScene, isActive: true)
+        router.register(sceneID: disconnectedScene, isActive: true)
+        router.accept(
+            notificationIdentifier: "disconnected-target",
+            mediaID: 42,
+            ownerUsername: "Owner",
+            targetSceneID: disconnectedScene
+        )
+        let targetedDestination = try #require(
+            router.pendingDestination(for: disconnectedScene)
+        )
+
+        ReleaseNotificationSceneLifecycleCoordinator.disconnect(
+            router: router,
+            sceneID: disconnectedScene
+        )
+
+        #expect(router.pendingDestination(for: disconnectedScene) == nil)
+        #expect(router.pendingDestination(for: remainingScene)?.id == targetedDestination.id)
+        #expect(consume(router: router, sceneID: remainingScene) == .navigate(
+            ReleaseNotificationNavigation(
+                id: targetedDestination.id,
+                tab: .anime,
+                detailDestination: ReleaseNotificationDetailDestination(
+                    id: targetedDestination.id,
+                    mediaId: 42
+                )
+            )
+        ))
+    }
+
+    @Test("An inactive scene retains the targeted tap until activation")
+    func inactiveTargetedSceneRetainsTap() throws {
         let router = ReleaseNotificationRouter()
         let sceneID = UUID()
         let navigationState = ContentNavigationState()
-        router.register(sceneID: sceneID, isActive: true)
         router.accept(
-            notificationIdentifier: "blocked-presentation",
+            notificationIdentifier: "inactive-target",
             mediaID: 42,
-            ownerUsername: "Owner"
+            ownerUsername: "Owner",
+            targetSceneID: sceneID
+        )
+        #expect(router.pendingDestination(for: sceneID) == nil)
+        #expect(navigationState.animePath.isEmpty)
+
+        ReleaseNotificationSceneLifecycleCoordinator.update(
+            router: router,
+            sceneID: sceneID,
+            isActive: true
         )
         let destination = try #require(router.pendingDestination(for: sceneID))
-        navigationState.apply(consume(router: router, sceneID: sceneID))
-
-        #expect(!ReleaseNotificationPresentationCoordinator.present(
-            navigationID: destination.id,
+        let outcome = consume(router: router, sceneID: sceneID)
+        #expect(ReleaseNotificationPresentationCoordinator.present(
+            outcome: outcome,
             sceneID: sceneID,
             state: navigationState,
-            router: router,
-            canPresent: { false }
+            router: router
         ))
-        #expect(navigationState.animePath.isEmpty)
-        #expect(navigationState.pendingNotificationNavigation?.id == destination.id)
-        #expect(router.claimedDestination(for: sceneID) == destination)
+        #expect(navigationState.animePath.count == 1)
+        #expect(router.pendingDestination(for: sceneID) == nil)
+        #expect(destination.mediaID == 42)
     }
 
     @Test("A stale presentation cannot replace or acknowledge a newer tap")
@@ -447,8 +495,8 @@ struct ReleaseNotificationRoutingTests {
             mediaID: 41,
             ownerUsername: "Owner"
         )
-        let firstDestination = try #require(router.pendingDestination(for: sceneID))
-        navigationState.apply(consume(router: router, sceneID: sceneID))
+        _ = try #require(router.pendingDestination(for: sceneID))
+        let firstOutcome = consume(router: router, sceneID: sceneID)
 
         router.accept(
             notificationIdentifier: "race-second",
@@ -457,22 +505,20 @@ struct ReleaseNotificationRoutingTests {
         )
         let secondDestination = try #require(router.pendingDestination(for: sceneID))
         #expect(!ReleaseNotificationPresentationCoordinator.present(
-            navigationID: firstDestination.id,
+            outcome: firstOutcome,
             sceneID: sceneID,
             state: navigationState,
-            router: router,
-            canPresent: { true }
+            router: router
         ))
         #expect(navigationState.animePath.isEmpty)
         #expect(router.pendingDestination(for: sceneID) == secondDestination)
 
-        navigationState.apply(consume(router: router, sceneID: sceneID))
+        let secondOutcome = consume(router: router, sceneID: sceneID)
         #expect(ReleaseNotificationPresentationCoordinator.present(
-            navigationID: secondDestination.id,
+            outcome: secondOutcome,
             sceneID: sceneID,
             state: navigationState,
-            router: router,
-            canPresent: { true }
+            router: router
         ))
         #expect(navigationState.animePath.count == 1)
         #expect(router.pendingDestination(for: sceneID) == nil)
@@ -494,5 +540,22 @@ struct ReleaseNotificationRoutingTests {
             isActive: isActive,
             ownerUsername: ownerUsername
         )
+    }
+}
+
+private final class ReleaseNotificationDeliveryRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedEvents = [String]()
+
+    var events: [String] {
+        lock.withLock { storedEvents }
+    }
+
+    @discardableResult
+    func record(_ event: String) -> Int {
+        lock.withLock {
+            storedEvents.append(event)
+            return storedEvents.count { $0 == event }
+        }
     }
 }

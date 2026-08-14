@@ -854,6 +854,21 @@ final class ReleaseNotificationRouter {
         )
     }
 
+    func disconnect(sceneID: UUID) {
+        register(sceneID: sceneID, isActive: false)
+        guard let pendingDestination,
+              pendingDestination.targetSceneID == sceneID else {
+            return
+        }
+        self.pendingDestination = Destination(
+            id: pendingDestination.id,
+            notificationIdentifier: pendingDestination.notificationIdentifier,
+            mediaID: pendingDestination.mediaID,
+            ownerUsername: pendingDestination.ownerUsername,
+            targetSceneID: nil
+        )
+    }
+
     @discardableResult
     func accept(
         notificationIdentifier: String,
@@ -905,10 +920,14 @@ final class ReleaseNotificationRouter {
 
     func pendingDestination(for sceneID: UUID) -> Destination? {
         guard activeSceneIDs.contains(sceneID),
-              pendingDestination?.targetSceneID == nil
-                || pendingDestination?.targetSceneID == sceneID,
+              let pendingDestination,
               claimedSceneID == nil || claimedSceneID == sceneID else {
             return nil
+        }
+        if let targetSceneID = pendingDestination.targetSceneID {
+            guard targetSceneID == sceneID else { return nil }
+        } else {
+            guard activeSceneIDs.count == 1 else { return nil }
         }
         return pendingDestination
     }
@@ -993,4 +1012,5 @@ enum ReleaseNotificationRouteDiagnostics {
             "Navigation presented for media ID \(mediaID, privacy: .private(mask: .hash)); path count: \(pathCount, privacy: .public)"
         )
     }
+
 }
