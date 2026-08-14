@@ -821,6 +821,7 @@ final class ReleaseNotificationStore {
 final class ReleaseNotificationRouter {
     struct Destination: Hashable {
         let id: UUID
+        let notificationIdentifier: String
         let mediaID: Int
         let ownerUsername: String
     }
@@ -829,6 +830,9 @@ final class ReleaseNotificationRouter {
 
     private(set) var pendingDestination: Destination?
     private var activeSceneIDs = Set<UUID>()
+    private var claimedSceneID: UUID?
+    private var acceptedNotificationIdentifiers = Set<String>()
+    private var acceptedNotificationIdentifierOrder = [String]()
 
     init() {}
 
@@ -838,6 +842,9 @@ final class ReleaseNotificationRouter {
             updatedSceneIDs.insert(sceneID)
         } else {
             updatedSceneIDs.remove(sceneID)
+            if claimedSceneID == sceneID {
+                claimedSceneID = nil
+            }
         }
         activeSceneIDs = updatedSceneIDs
         ReleaseNotificationRouteDiagnostics.sceneRegistrationChanged(
@@ -846,31 +853,66 @@ final class ReleaseNotificationRouter {
         )
     }
 
-    func accept(mediaID: Int, ownerUsername: String) {
-        guard mediaID > 0,
+    @discardableResult
+    func accept(
+        notificationIdentifier: String,
+        mediaID: Int,
+        ownerUsername: String
+    ) -> Bool {
+        guard !notificationIdentifier.isEmpty,
+              mediaID > 0,
               !ReleaseNotificationCandidate.normalizedOwnerUsername(ownerUsername).isEmpty else {
-            return
+            return false
+        }
+        guard acceptedNotificationIdentifiers.insert(notificationIdentifier).inserted else {
+            ReleaseNotificationRouteDiagnostics.duplicateResponseIgnored(mediaID: mediaID)
+            return false
+        }
+        acceptedNotificationIdentifierOrder.append(notificationIdentifier)
+        if acceptedNotificationIdentifierOrder.count > 64 {
+            let expiredIdentifier = acceptedNotificationIdentifierOrder.removeFirst()
+            acceptedNotificationIdentifiers.remove(expiredIdentifier)
         }
         pendingDestination = Destination(
             id: UUID(),
+            notificationIdentifier: notificationIdentifier,
             mediaID: mediaID,
             ownerUsername: ownerUsername
         )
+        claimedSceneID = nil
         ReleaseNotificationRouteDiagnostics.destinationQueued(
             mediaID: mediaID,
             activeSceneCount: activeSceneIDs.count
         )
+        return true
     }
 
     func pendingDestination(for sceneID: UUID) -> Destination? {
-        guard activeSceneIDs.contains(sceneID) else { return nil }
+        guard activeSceneIDs.contains(sceneID),
+              claimedSceneID == nil || claimedSceneID == sceneID else {
+            return nil
+        }
         return pendingDestination
     }
 
-    func takePendingDestination(for sceneID: UUID) -> Destination? {
-        guard let destination = pendingDestination(for: sceneID) else { return nil }
+    @discardableResult
+    func claim(destinationID: UUID, for sceneID: UUID) -> Bool {
+        guard pendingDestination(for: sceneID)?.id == destinationID else { return false }
+        claimedSceneID = sceneID
+        return true
+    }
+
+    func claimedDestination(for sceneID: UUID) -> Destination? {
+        guard claimedSceneID == sceneID else { return nil }
+        return pendingDestination(for: sceneID)
+    }
+
+    @discardableResult
+    func acknowledge(destinationID: UUID, for sceneID: UUID) -> Bool {
+        guard claimedDestination(for: sceneID)?.id == destinationID else { return false }
         pendingDestination = nil
-        return destination
+        claimedSceneID = nil
+        return true
     }
 }
 
@@ -880,9 +922,13 @@ enum ReleaseNotificationRouteDiagnostics {
         category: "ReleaseNotifications"
     )
 
-    nonisolated static func responseReceived(isManaged: Bool, isDefaultAction: Bool) {
+    nonisolated static func responseReceived(
+        source: ReleaseNotificationResponseSource,
+        isManaged: Bool,
+        isDefaultAction: Bool
+    ) {
         logger.notice(
-            "Response received; managed: \(isManaged, privacy: .public), default action: \(isDefaultAction, privacy: .public)"
+            "Response received from \(source.rawValue, privacy: .public); managed: \(isManaged, privacy: .public), default action: \(isDefaultAction, privacy: .public)"
         )
     }
 
@@ -892,6 +938,12 @@ enum ReleaseNotificationRouteDiagnostics {
 
     nonisolated static func responseRejected() {
         logger.notice("Response rejected during payload validation")
+    }
+
+    nonisolated static func duplicateResponseIgnored(mediaID: Int) {
+        logger.notice(
+            "Duplicate response ignored for media ID \(mediaID, privacy: .private(mask: .hash))"
+        )
     }
 
     nonisolated static func destinationQueued(mediaID: Int, activeSceneCount: Int) {

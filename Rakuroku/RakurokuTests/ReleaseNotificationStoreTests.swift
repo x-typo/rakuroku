@@ -783,38 +783,44 @@ struct ReleaseNotificationStoreTests {
         ) == nil)
     }
 
-    @Test("Router lets one active scene claim each uniquely identified destination")
-    func routerTakeSemantics() {
+    @Test("Router retains one destination until acknowledgement and ignores duplicate ingress")
+    func routerAcknowledgementSemantics() throws {
         let router = ReleaseNotificationRouter()
         let firstScene = UUID()
         let secondScene = UUID()
 
-        router.accept(mediaID: 41, ownerUsername: "owner")
+        router.accept(notificationIdentifier: "41", mediaID: 41, ownerUsername: "owner")
         #expect(router.pendingDestination(for: firstScene) == nil)
         router.register(sceneID: firstScene, isActive: true)
-        #expect(router.takePendingDestination(for: firstScene)?.mediaID == 41)
+        let firstDestination = try #require(router.pendingDestination(for: firstScene))
+        #expect(firstDestination.mediaID == 41)
+        #expect(router.claim(destinationID: firstDestination.id, for: firstScene))
+        #expect(router.acknowledge(destinationID: firstDestination.id, for: firstScene))
 
         router.register(sceneID: secondScene, isActive: true)
 
-        router.accept(mediaID: 42, ownerUsername: "owner")
-        let firstClaim = router.pendingDestination(for: firstScene)
-        let secondClaim = router.pendingDestination(for: secondScene)
-        #expect(firstClaim?.mediaID == 42)
-        #expect(secondClaim?.id == firstClaim?.id)
-        #expect(router.takePendingDestination(for: firstScene)?.id == firstClaim?.id)
-        #expect(router.takePendingDestination(for: secondScene) == nil)
+        router.accept(notificationIdentifier: "42", mediaID: 42, ownerUsername: "owner")
+        let firstClaim = try #require(router.pendingDestination(for: firstScene))
+        let secondClaim = try #require(router.pendingDestination(for: secondScene))
+        #expect(firstClaim.mediaID == 42)
+        #expect(secondClaim.id == firstClaim.id)
+        #expect(router.claim(destinationID: firstClaim.id, for: firstScene))
+        #expect(router.pendingDestination(for: secondScene) == nil)
+        #expect(router.acknowledge(destinationID: firstClaim.id, for: firstScene))
+        #expect(router.pendingDestination(for: secondScene) == nil)
 
-        router.accept(mediaID: 43, ownerUsername: "owner")
+        router.accept(notificationIdentifier: "43", mediaID: 43, ownerUsername: "owner")
         router.register(sceneID: secondScene, isActive: false)
-        #expect(router.takePendingDestination(for: firstScene)?.mediaID == 43)
+        #expect(router.pendingDestination(for: firstScene)?.mediaID == 43)
 
-        router.accept(mediaID: 43, ownerUsername: "owner")
-        let firstID = router.pendingDestination(for: firstScene)?.id
-        router.accept(mediaID: 43, ownerUsername: "owner")
-        #expect(router.pendingDestination(for: firstScene)?.id != firstID)
+        #expect(!router.accept(notificationIdentifier: "43", mediaID: 43, ownerUsername: "owner"))
+        let firstID = try #require(router.pendingDestination(for: firstScene)?.id)
+        #expect(!router.accept(notificationIdentifier: "43", mediaID: 43, ownerUsername: "owner"))
+        #expect(router.pendingDestination(for: firstScene)?.id == firstID)
 
-        router.accept(mediaID: 0, ownerUsername: "owner")
-        #expect(router.takePendingDestination(for: firstScene)?.mediaID == 43)
+        #expect(!router.accept(notificationIdentifier: "invalid", mediaID: 0, ownerUsername: "owner"))
+        #expect(router.claim(destinationID: firstID, for: firstScene))
+        #expect(router.acknowledge(destinationID: firstID, for: firstScene))
     }
 
     private func validCandidates(
