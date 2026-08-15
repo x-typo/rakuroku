@@ -4,6 +4,56 @@ import Observation
 import Security
 import SwiftUI
 
+@MainActor
+protocol AuthPersistence {
+    func loadAccessToken() -> String?
+    func loadUsername() -> String?
+    func saveAccessToken(_ token: String) -> Bool
+    func saveUsername(_ username: String)
+    func deleteAccessToken()
+    func deleteUsername()
+}
+
+struct AuthenticatedViewerResolutionRequest: Hashable, Sendable {
+    let sessionID: MediaLibrarySession.ID
+    let accessToken: String
+    let attempt: UInt64
+
+    var session: MediaLibrarySession {
+        MediaLibrarySession(id: sessionID, accessToken: accessToken)
+    }
+}
+
+@MainActor
+private final class DefaultAuthPersistence: AuthPersistence {
+    private let tokenKey = "anilist_access_token"
+    private let usernameKey = "anilist_username"
+
+    func loadAccessToken() -> String? {
+        KeychainHelper.loadString(key: tokenKey)
+    }
+
+    func loadUsername() -> String? {
+        UserDefaults.standard.string(forKey: usernameKey)
+    }
+
+    func saveAccessToken(_ token: String) -> Bool {
+        KeychainHelper.saveString(key: tokenKey, value: token)
+    }
+
+    func saveUsername(_ username: String) {
+        UserDefaults.standard.set(username, forKey: usernameKey)
+    }
+
+    func deleteAccessToken() {
+        KeychainHelper.delete(key: tokenKey)
+    }
+
+    func deleteUsername() {
+        UserDefaults.standard.removeObject(forKey: usernameKey)
+    }
+}
+
 @MainActor @Observable
 final class AuthStore {
     private(set) var accessToken: String?
@@ -11,6 +61,9 @@ final class AuthStore {
     private(set) var isLoading = true
     private(set) var authError: String?
     private(set) var mediaLibraryRevision: UInt64 = 0
+    private(set) var isMediaLibraryIdentityResolved: Bool
+    private(set) var mediaLibraryIdentityResolutionError: String?
+    private(set) var mediaLibraryIdentityResolutionAttempt: UInt64 = 0
 
     var isAuthenticated: Bool { accessToken != nil }
     var mediaLibrarySession: MediaLibrarySession {
@@ -23,18 +76,42 @@ final class AuthStore {
         )
     }
 
-    private let tokenKey = "anilist_access_token"
-    private let usernameKey = "anilist_username"
-    private let defaultUsername = ProcessInfo.processInfo.environment["ANILIST_USERNAME"] ?? "xtypo"
+    var authenticatedViewerResolutionRequest: AuthenticatedViewerResolutionRequest? {
+        guard !isMediaLibraryIdentityResolved, let accessToken else { return nil }
+        return AuthenticatedViewerResolutionRequest(
+            sessionID: mediaLibrarySession.id,
+            accessToken: accessToken,
+            attempt: mediaLibraryIdentityResolutionAttempt
+        )
+    }
+
+    func isCurrent(_ session: MediaLibrarySession) -> Bool {
+        mediaLibrarySession.id == session.id
+            && accessToken == session.accessToken
+    }
+
+    private let persistence: any AuthPersistence
+    private let defaultUsername: String
     private let clientId = "33626"
     private let callbackScheme = "rakuroku"
     private let callbackHost = "auth"
     private var authSession: ASWebAuthenticationSession?
     private var authContextProvider: ASWebAuthContextProvider?
 
-    init() {
-        accessToken = KeychainHelper.loadString(key: tokenKey)
-        username = UserDefaults.standard.string(forKey: usernameKey) ?? defaultUsername
+    convenience init() {
+        self.init(
+            persistence: DefaultAuthPersistence(),
+            defaultUsername: ProcessInfo.processInfo.environment["ANILIST_USERNAME"] ?? "xtypo"
+        )
+    }
+
+    init(persistence: any AuthPersistence, defaultUsername: String) {
+        self.persistence = persistence
+        self.defaultUsername = defaultUsername
+        let persistedAccessToken = persistence.loadAccessToken()
+        accessToken = persistedAccessToken
+        username = persistence.loadUsername() ?? defaultUsername
+        isMediaLibraryIdentityResolved = persistedAccessToken == nil
         isLoading = false
     }
 
@@ -43,7 +120,39 @@ final class AuthStore {
         guard username != normalizedName else { return }
         username = normalizedName
         mediaLibraryRevision &+= 1
-        UserDefaults.standard.set(normalizedName, forKey: usernameKey)
+        persistence.saveUsername(normalizedName)
+    }
+
+    @discardableResult
+    func applyResolvedUsername(
+        _ name: String,
+        for session: MediaLibrarySession
+    ) -> Bool {
+        guard session.accessToken != nil, isCurrent(session) else { return false }
+        updateUsername(name)
+        isMediaLibraryIdentityResolved = true
+        mediaLibraryIdentityResolutionError = nil
+        return true
+    }
+
+    @discardableResult
+    func recordMediaLibraryIdentityResolutionFailure(
+        for session: MediaLibrarySession
+    ) -> Bool {
+        guard session.accessToken != nil,
+              isCurrent(session),
+              !isMediaLibraryIdentityResolved else {
+            return false
+        }
+        mediaLibraryIdentityResolutionError =
+            "Couldn't verify your AniList account. Check your connection and try again."
+        return true
+    }
+
+    func retryMediaLibraryIdentityResolution() {
+        guard accessToken != nil, !isMediaLibraryIdentityResolved else { return }
+        mediaLibraryIdentityResolutionError = nil
+        mediaLibraryIdentityResolutionAttempt &+= 1
     }
 
     func login() async {
@@ -134,14 +243,26 @@ final class AuthStore {
 
     func logout(authError message: String? = nil) {
         let identityChanged = accessToken != nil || username != defaultUsername
-        KeychainHelper.delete(key: tokenKey)
+        persistence.deleteAccessToken()
         accessToken = nil
         username = defaultUsername
+        isMediaLibraryIdentityResolved = true
+        mediaLibraryIdentityResolutionError = nil
         if identityChanged {
             mediaLibraryRevision &+= 1
         }
         authError = message
-        UserDefaults.standard.removeObject(forKey: usernameKey)
+        persistence.deleteUsername()
+    }
+
+    @discardableResult
+    func logoutIfCurrent(
+        _ session: MediaLibrarySession,
+        authError message: String? = nil
+    ) -> Bool {
+        guard session.accessToken != nil, isCurrent(session) else { return false }
+        logout(authError: message)
+        return true
     }
 
     @discardableResult
@@ -159,12 +280,17 @@ final class AuthStore {
     }
 
     private func persistAccessToken(_ token: String) -> Bool {
-        guard KeychainHelper.saveString(key: tokenKey, value: token) else {
+        guard persistence.saveAccessToken(token) else {
             authError = "Couldn't save token securely."
             return false
         }
         if accessToken != token {
             mediaLibraryRevision &+= 1
+            isMediaLibraryIdentityResolved = false
+            mediaLibraryIdentityResolutionError = nil
+            mediaLibraryIdentityResolutionAttempt &+= 1
+        } else if !isMediaLibraryIdentityResolved {
+            retryMediaLibraryIdentityResolution()
         }
         accessToken = token
         authError = nil

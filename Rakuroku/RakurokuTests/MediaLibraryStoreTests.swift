@@ -1152,7 +1152,7 @@ struct MediaLibraryStoreTests {
         ) == .applied)
         #expect(store.state(for: .anime).phase == .loaded)
 
-        await client.succeed(refreshRequest, with: [original])
+        await client.succeedIfPending(refreshRequest, with: [original])
         await refresh.value
 
         #expect(store.entry(mediaID: 101, type: .anime)?.progress == 5)
@@ -1352,12 +1352,43 @@ struct MediaLibraryStoreTests {
         #expect(store.entries(for: .manga).isEmpty)
 
         await client.succeed(newRequest, with: [makeEntry(entryID: 2, mediaID: 202)])
-        await client.succeed(oldRequest, with: [makeEntry(entryID: 3, mediaID: 303)])
+        await client.succeedIfPending(
+            oldRequest,
+            with: [makeEntry(entryID: 3, mediaID: 303)]
+        )
         await newLoad.value
         await oldLoad.value
 
         #expect(store.state(for: .anime).phase == .idle)
         #expect(store.entries(for: .anime).isEmpty)
+        #expect(store.entries(for: .manga).map(\.media.id) == [202])
+        #expect(store.state(for: .manga).snapshotSessionID == newSession.id)
+    }
+
+    @Test("Session replacement cancels the old request without accepting its late completion", .timeLimit(.minutes(1)))
+    func sessionReplacementCancelsOldRequest() async {
+        let client = ControlledMediaLibraryClient()
+        let store = MediaLibraryStore(client: client)
+        let oldSession = makeSession(username: "old-user", revision: 1)
+        let newSession = makeSession(username: "new-user", revision: 2)
+
+        let oldLoad = Task { await store.load(.anime, session: oldSession) }
+        let oldRequest = await client.nextRequest()
+        let newLoad = Task { await store.load(.manga, session: newSession) }
+        let newRequest = await client.nextRequest()
+
+        await oldLoad.value
+        await client.succeedIfPending(
+            oldRequest,
+            with: [makeEntry(entryID: 1, mediaID: 101)]
+        )
+        await client.failIfPending(oldRequest, with: .offline)
+        await client.succeed(newRequest, with: [makeEntry(entryID: 2, mediaID: 202)])
+        await newLoad.value
+
+        #expect(store.state(for: .anime).phase == .idle)
+        #expect(store.entries(for: .anime).isEmpty)
+        #expect(store.state(for: .manga).phase == .loaded)
         #expect(store.entries(for: .manga).map(\.media.id) == [202])
         #expect(store.state(for: .manga).snapshotSessionID == newSession.id)
     }
@@ -1518,6 +1549,7 @@ private actor ControlledMediaLibraryClient: MediaLibraryClient {
     private var queuedRequests: [Request] = []
     private var requestWaiters: [CheckedContinuation<Request, Never>] = []
     private var completions: [Int: CheckedContinuation<[MediaListEntry], Error>] = [:]
+    private var canceledRequestIDs: Set<Int> = []
 
     func fetchMediaList(
         type: MediaType,
@@ -1533,13 +1565,22 @@ private actor ControlledMediaLibraryClient: MediaLibraryClient {
         nextID += 1
         count += 1
 
-        return try await withCheckedThrowingContinuation { continuation in
-            completions[request.id] = continuation
-            if requestWaiters.isEmpty {
-                queuedRequests.append(request)
-            } else {
-                requestWaiters.removeFirst().resume(returning: request)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                if canceledRequestIDs.remove(request.id) != nil {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
+
+                completions[request.id] = continuation
+                if requestWaiters.isEmpty {
+                    queuedRequests.append(request)
+                } else {
+                    requestWaiters.removeFirst().resume(returning: request)
+                }
             }
+        } onCancel: {
+            Task { await self.cancel(requestID: request.id) }
         }
     }
 
@@ -1558,15 +1599,35 @@ private actor ControlledMediaLibraryClient: MediaLibraryClient {
 
     func succeed(_ request: Request, with entries: [MediaListEntry]) {
         guard let continuation = completions.removeValue(forKey: request.id) else {
-            fatalError("Missing request continuation")
+            Issue.record("No pending media-library request \(request.id) to complete")
+            return
         }
         continuation.resume(returning: entries)
     }
 
     func fail(_ request: Request, with error: StubError) {
         guard let continuation = completions.removeValue(forKey: request.id) else {
-            fatalError("Missing request continuation")
+            Issue.record("No pending media-library request \(request.id) to fail")
+            return
         }
         continuation.resume(throwing: error)
+    }
+
+    func succeedIfPending(_ request: Request, with entries: [MediaListEntry]) {
+        guard let continuation = completions.removeValue(forKey: request.id) else { return }
+        continuation.resume(returning: entries)
+    }
+
+    func failIfPending(_ request: Request, with error: StubError) {
+        guard let continuation = completions.removeValue(forKey: request.id) else { return }
+        continuation.resume(throwing: error)
+    }
+
+    private func cancel(requestID: Int) {
+        guard let continuation = completions.removeValue(forKey: requestID) else {
+            canceledRequestIDs.insert(requestID)
+            return
+        }
+        continuation.resume(throwing: CancellationError())
     }
 }
