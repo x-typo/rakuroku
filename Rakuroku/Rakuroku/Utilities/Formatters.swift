@@ -2,6 +2,10 @@ import SwiftUI
 
 enum Formatters {
 
+    static func userScore(_ score: Double) -> String {
+        score.formatted(.number.precision(.fractionLength(0...1)))
+    }
+
     // MARK: - Status
 
     static func statusColor(_ status: MediaListStatus?) -> Color? {

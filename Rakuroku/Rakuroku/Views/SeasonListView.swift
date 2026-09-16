@@ -8,13 +8,7 @@ struct SeasonListView: View {
     @Environment(AuthStore.self) private var authStore
     @Environment(MediaLibraryStore.self) private var mediaLibraryStore
 
-    @State private var media: [SeasonalMedia] = []
-    @State private var loading = true
-    @State private var error: String?
-    @State private var hasNextPage = true
-    @State private var loadingMore = false
-    @State private var currentPage = 1
-    @State private var loadMoreError: String?
+    @State private var loadState = SeasonListStore()
 
     private var activeSessionID: MediaLibrarySession.ID {
         authStore.mediaLibrarySession.id
@@ -55,22 +49,22 @@ struct SeasonListView: View {
                 ContentWarningView(message: personalizationWarning)
             }
 
-            if loading {
+            if loadState.loading {
                 ContentLoadingView()
-            } else if let error {
+            } else if let error = loadState.error {
                 ContentErrorView(message: error) { Task { await refreshData() } }
             } else {
                 ScrollView {
                     LazyVStack(spacing: 12) {
-                        ForEach(media) { item in
+                        ForEach(loadState.media) { item in
                             seasonMediaRow(item)
                         }
 
-                        if loadingMore {
+                        if loadState.loadingMore {
                             ProgressView().tint(Theme.primary).padding()
                         }
 
-                        if let loadMoreError {
+                        if let loadMoreError = loadState.loadMoreError {
                             VStack(spacing: 8) {
                                 Text(loadMoreError)
                                     .font(.caption)
@@ -83,7 +77,7 @@ struct SeasonListView: View {
                             .padding()
                         }
 
-                        if hasNextPage && !loadingMore && loadMoreError == nil {
+                        if loadState.canLoadMore && loadState.loadMoreError == nil {
                             Color.clear.frame(height: 1)
                                 .onAppear { Task { await loadMore() } }
                         }
@@ -165,27 +159,7 @@ struct SeasonListView: View {
     }
 
     private func loadData() async {
-        if media.isEmpty { loading = true }
-        error = nil
-        currentPage = 1
-        loadMoreError = nil
-        do {
-            let result = try await AniListClient.shared.fetchSeasonalAnime(
-                season: season,
-                year: year,
-                page: 1,
-                perPage: 25
-            )
-            try Task.checkCancellation()
-            media = result.media
-            hasNextPage = result.hasNextPage
-            loading = false
-        } catch where error.isCancellation {
-            return
-        } catch {
-            self.error = error.localizedDescription
-            loading = false
-        }
+        await loadState.refresh(loader: loadPage)
     }
 
     private func loadLibrary() async {
@@ -201,22 +175,12 @@ struct SeasonListView: View {
     }
 
     private func loadMore() async {
-        guard !loadingMore, hasNextPage else { return }
-        loadingMore = true
-        loadMoreError = nil
-        let nextPage = currentPage + 1
-        do {
-            let result = try await AniListClient.shared.fetchSeasonalAnime(season: season, year: year, page: nextPage, perPage: 25)
-            try Task.checkCancellation()
-            let existingIds = Set(media.map(\.id))
-            let newItems = result.media.filter { !existingIds.contains($0.id) }
-            media.append(contentsOf: newItems)
-            hasNextPage = result.hasNextPage
-            currentPage = nextPage
-        } catch where error.isCancellation {
-        } catch {
-            loadMoreError = error.localizedDescription
-        }
-        loadingMore = false
+        await loadState.loadMore(loader: loadPage)
+    }
+
+    private func loadPage(_ page: Int) async throws -> SeasonListStore.Page {
+        try await AniListClient.shared.fetchSeasonalAnime(
+            season: season, year: year, page: page, perPage: 25
+        )
     }
 }

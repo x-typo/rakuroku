@@ -69,6 +69,58 @@ struct AuthStoreTests {
         #expect(store.authError == "Couldn't save token securely.")
     }
 
+    @Test("Failed logout preserves the session and can be retried")
+    func failedLogoutPreservesSessionUntilRetry() {
+        let persistence = InMemoryAuthPersistence(
+            accessToken: "credential",
+            username: "viewer",
+            shouldDeleteAccessToken: false
+        )
+        let store = AuthStore(persistence: persistence, defaultUsername: "default")
+        #expect(store.applyResolvedUsername("viewer", for: store.mediaLibrarySession))
+        let session = store.mediaLibrarySession
+
+        #expect(!store.logout())
+
+        #expect(store.isCurrent(session))
+        #expect(store.isAuthenticated)
+        #expect(store.isMediaLibraryIdentityResolved)
+        #expect(persistence.accessToken == "credential")
+        #expect(persistence.username == "viewer")
+        #expect(store.authError == "Couldn't remove your saved token securely. Try signing out again.")
+
+        persistence.shouldDeleteAccessToken = true
+
+        #expect(store.logout())
+        #expect(!store.isAuthenticated)
+        #expect(store.username == "default")
+        #expect(store.mediaLibrarySession.id.revision == session.id.revision + 1)
+        #expect(persistence.accessToken == nil)
+        #expect(persistence.username == nil)
+        #expect(store.authError == nil)
+    }
+
+    @Test("Authentication invalidation reports failed deletion and keeps unresolved identity gated")
+    func failedInvalidationPreservesUnresolvedIdentity() {
+        let persistence = InMemoryAuthPersistence(
+            accessToken: "credential",
+            username: "viewer",
+            shouldDeleteAccessToken: false
+        )
+        let store = AuthStore(persistence: persistence, defaultUsername: "default")
+        let session = store.mediaLibrarySession
+
+        #expect(!store.logoutIfCurrent(session, authError: "expired"))
+
+        #expect(store.isCurrent(session))
+        #expect(!store.isMediaLibraryIdentityResolved)
+        #expect(store.authenticatedViewerResolutionRequest?.sessionID == session.id)
+        #expect(store.authenticatedViewerResolutionRequest?.accessToken == session.accessToken)
+        #expect(persistence.accessToken == "credential")
+        #expect(persistence.username == "viewer")
+        #expect(store.authError == "Couldn't remove your saved token securely. Try signing out again.")
+    }
+
     @Test("Canonical library loads receive the AuthStore session identity and credential")
     func mediaLibraryReceivesAuthSession() async {
         let persistence = InMemoryAuthPersistence(
@@ -180,6 +232,22 @@ struct AuthStoreTests {
         #expect(store.isMediaLibraryIdentityResolved)
     }
 
+    @Test("A provider outage preserves the saved session and explains verification failure")
+    func providerOutagePreservesSession() {
+        let persistence = InMemoryAuthPersistence(accessToken: "credential", username: "viewer")
+        let store = AuthStore(persistence: persistence, defaultUsername: "default")
+        let session = store.mediaLibrarySession
+        let message = AniListError.serviceUnavailable.errorDescription
+
+        #expect(store.recordMediaLibraryIdentityResolutionFailure(for: session, message: message))
+
+        #expect(store.mediaLibraryIdentityResolutionError == message)
+        #expect(store.isCurrent(session))
+        #expect(store.accessToken == "credential")
+        #expect(persistence.accessToken == "credential")
+        #expect(!store.isMediaLibraryIdentityResolved)
+    }
+
     @Test("A transient Viewer failure can retry and resolve without changing tokens")
     func transientViewerFailureCanRetry() throws {
         let persistence = InMemoryAuthPersistence(
@@ -281,15 +349,18 @@ private final class InMemoryAuthPersistence: AuthPersistence {
     var accessToken: String?
     var username: String?
     var shouldSaveAccessToken: Bool
+    var shouldDeleteAccessToken: Bool
 
     init(
         accessToken: String? = nil,
         username: String? = nil,
-        shouldSaveAccessToken: Bool = true
+        shouldSaveAccessToken: Bool = true,
+        shouldDeleteAccessToken: Bool = true
     ) {
         self.accessToken = accessToken
         self.username = username
         self.shouldSaveAccessToken = shouldSaveAccessToken
+        self.shouldDeleteAccessToken = shouldDeleteAccessToken
     }
 
     func loadAccessToken() -> String? {
@@ -310,8 +381,10 @@ private final class InMemoryAuthPersistence: AuthPersistence {
         self.username = username
     }
 
-    func deleteAccessToken() {
+    func deleteAccessToken() -> Bool {
+        guard shouldDeleteAccessToken else { return false }
         accessToken = nil
+        return true
     }
 
     func deleteUsername() {

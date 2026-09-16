@@ -513,7 +513,8 @@ struct ContentView: View {
                 } catch where error.isCancellation {
                 } catch {
                     _ = authStore.recordMediaLibraryIdentityResolutionFailure(
-                        for: session
+                        for: session,
+                        message: (error as? AniListError)?.errorDescription
                     )
                 }
             } else {
