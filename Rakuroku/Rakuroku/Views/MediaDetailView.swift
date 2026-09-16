@@ -6,6 +6,12 @@ struct MediaDetailView: View {
         let sessionID: MediaLibrarySession.ID
     }
 
+    private struct CanonicalSnapshot: Equatable {
+        let mediaID: Int
+        let sessionID: MediaLibrarySession.ID
+        let entry: MediaDetailEntryStore.Snapshot
+    }
+
     private enum EntryMutation: Equatable {
         case score
         case status
@@ -36,7 +42,8 @@ struct MediaDetailView: View {
     @Environment(MediaLibraryStore.self) private var mediaLibraryStore
 
     @State private var media: MediaDetails?
-    @State private var userEntry: UserMediaEntry?
+    @State private var entryLoadState = MediaDetailEntryStore()
+
     @State private var entryLookupFailed = false
     @State private var loadedID: LoadID?
     @State private var loading = true
@@ -48,6 +55,8 @@ struct MediaDetailView: View {
     @State private var entryMutation: ActiveEntryMutation?
     @State private var mutationError: String?
     @State private var showDeleteConfirmation = false
+
+    private var userEntry: UserMediaEntry? { entryLoadState.entry }
 
     private var mutationContext: MutationContext? {
         let session = authStore.mediaLibrarySession
@@ -63,6 +72,25 @@ struct MediaDetailView: View {
             session: session,
             loadID: currentLoadID,
             accessToken: accessToken
+        )
+    }
+
+    private var canonicalEntry: UserMediaEntry? {
+        guard let type = media?.type else { return nil }
+        return mediaLibraryStore.entry(mediaID: mediaId, type: type).map {
+            MediaDetailMutationResolution.makeUserEntry(from: $0)
+        }
+    }
+
+    private var canonicalEntrySnapshot: CanonicalSnapshot? {
+        guard let media, media.id == mediaId, let type = media.type else { return nil }
+        let state = mediaLibraryStore.state(for: type)
+        guard state.hasUsableData,
+              state.snapshotSessionID == authStore.mediaLibrarySession.id else { return nil }
+        return CanonicalSnapshot(
+            mediaID: mediaId,
+            sessionID: authStore.mediaLibrarySession.id,
+            entry: MediaDetailEntryStore.Snapshot(canonicalEntry)
         )
     }
 
@@ -85,6 +113,15 @@ struct MediaDetailView: View {
         .background(Theme.background)
         .task(id: LoadID(mediaID: mediaId, sessionID: authStore.mediaLibrarySession.id)) {
             await loadData()
+        }
+        .onChange(of: canonicalEntrySnapshot) { previous, current in
+            guard let previous, let current,
+                  previous.mediaID == current.mediaID,
+                  previous.sessionID == current.sessionID else { return }
+            guard entryLoadState.applyCanonical(canonicalEntry) else { return }
+            loadedID = LoadID(mediaID: mediaId, sessionID: authStore.mediaLibrarySession.id)
+            entryLookupFailed = false
+            loading = false
         }
     }
 
@@ -263,7 +300,7 @@ struct MediaDetailView: View {
                 let score = userEntry?.score ?? 0
                 Group {
                     if score > 0 {
-                        Text(String(format: "%.0f ★", score))
+                        Text("\(Formatters.userScore(score)) ★")
                     } else {
                         Label("Rate", systemImage: "star")
                     }
@@ -374,44 +411,46 @@ struct MediaDetailView: View {
 
     @ViewBuilder
     private var scoreSheet: some View {
-        let currentScore = Int(userEntry?.score ?? 0)
+        let currentScore = userEntry?.score ?? 0
         let columns = [GridItem(.flexible()), GridItem(.flexible())]
 
-        VStack(spacing: 20) {
-            LazyVGrid(columns: columns, spacing: 12) {
-                ForEach([10, 9, 8, 7, 6, 5, 4, 3, 2, 1], id: \.self) { score in
-                    Button {
-                        Task { await handleScoreUpdate(Double(score)) }
-                    } label: {
-                        VStack(spacing: 4) {
-                            Text("\(score)")
-                                .font(.title.bold())
-                                .foregroundStyle(.white)
-                            Text(scoreLabel(score))
-                                .font(.caption2.weight(.medium))
-                                .foregroundStyle(.white.opacity(0.8))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(scoreGradient(score))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .overlay {
-                            if currentScore == score {
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(.white, lineWidth: 2)
+        ScrollView {
+            VStack(spacing: 20) {
+                LazyVGrid(columns: columns, spacing: 12) {
+                    ForEach([10, 9, 8, 7, 6, 5, 4, 3, 2, 1], id: \.self) { score in
+                        Button {
+                            Task { await handleScoreUpdate(Double(score)) }
+                        } label: {
+                            VStack(spacing: 4) {
+                                Text("\(score)")
+                                    .font(.title.bold())
+                                    .foregroundStyle(.white)
+                                Text(scoreLabel(score))
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundStyle(.white.opacity(0.8))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(scoreGradient(score))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay {
+                                if currentScore == Double(score) {
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(.white, lineWidth: 2)
+                                }
                             }
                         }
+                        .disabled(entryMutation != nil || mutationContext == nil)
                     }
-                    .disabled(entryMutation != nil || mutationContext == nil)
                 }
-            }
-            .padding(.horizontal, 16)
+                .padding(.horizontal, 16)
 
-            if entryMutation?.kind == .score { ProgressView().tint(Theme.primary) }
+                if entryMutation?.kind == .score { ProgressView().tint(Theme.primary) }
+            }
+            .padding(.top, 40)
+            .padding(.bottom, 20)
         }
-        .padding(.top, 40)
-        .padding(.bottom, 20)
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(entryMutation != nil)
     }
@@ -450,42 +489,44 @@ struct MediaDetailView: View {
 
     @ViewBuilder
     private func statusSheet(_ media: MediaDetails) -> some View {
-        VStack(spacing: 8) {
-            Text("Status").font(.title3.bold()).foregroundStyle(Theme.textPrimary).padding(.top, 16)
-            ForEach(MediaListStatus.allCases, id: \.self) { status in
-                Button {
-                    if userEntry != nil {
-                        Task { await handleStatusUpdate(status) }
-                    } else {
-                        Task { await handleAddToList(status) }
-                    }
-                } label: {
-                    HStack {
-                        Text(Formatters.statusLabel(status, type: media.type) ?? status.rawValue)
-                            .foregroundStyle(Theme.textPrimary)
-                        Spacer()
-                        if userEntry?.status == status {
-                            Image(systemName: "checkmark").foregroundStyle(Theme.primary)
+        ScrollView {
+            VStack(spacing: 8) {
+                Text("Status").font(.title3.bold()).foregroundStyle(Theme.textPrimary).padding(.top, 16)
+                ForEach(MediaListStatus.allCases, id: \.self) { status in
+                    Button {
+                        if userEntry != nil {
+                            Task { await handleStatusUpdate(status) }
+                        } else {
+                            Task { await handleAddToList(status) }
                         }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                }
-                .disabled(entryMutation != nil || mutationContext == nil)
-            }
-            if userEntry != nil {
-                Button(role: .destructive) {
-                    showDeleteConfirmation = true
-                } label: {
-                    Text("Remove from List")
-                        .foregroundStyle(Theme.error)
+                    } label: {
+                        HStack {
+                            Text(Formatters.statusLabel(status, type: media.type) ?? status.rawValue)
+                                .foregroundStyle(Theme.textPrimary)
+                            Spacer()
+                            if userEntry?.status == status {
+                                Image(systemName: "checkmark").foregroundStyle(Theme.primary)
+                            }
+                        }
+                        .padding(.horizontal, 16)
                         .padding(.vertical, 12)
+                    }
+                    .disabled(entryMutation != nil || mutationContext == nil)
                 }
-                .disabled(entryMutation != nil || mutationContext == nil)
+                if userEntry != nil {
+                    Button(role: .destructive) {
+                        showDeleteConfirmation = true
+                    } label: {
+                        Text("Remove from List")
+                            .foregroundStyle(Theme.error)
+                            .padding(.vertical, 12)
+                    }
+                    .disabled(entryMutation != nil || mutationContext == nil)
+                }
+                if entryMutation?.kind == .status { ProgressView().tint(Theme.primary) }
             }
-            if entryMutation?.kind == .status { ProgressView().tint(Theme.primary) }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(entryMutation != nil)
         .confirmationDialog(
@@ -574,47 +615,52 @@ struct MediaDetailView: View {
         let loadID = LoadID(mediaID: mediaId, sessionID: session.id)
         if loadedID != loadID {
             loadedID = nil
-            userEntry = nil
+            entryLoadState.replace(with: nil)
             entryLookupFailed = false
             entryMutation = nil
             mutationError = nil
             loading = true
+        } else if entryMutation != nil {
+            return
         } else if media == nil {
             loading = true
         }
+        let request = entryLoadState.beginRead(sessionID: session.id)
         error = nil
         do {
             let details = try await AniListClient.shared.fetchMediaDetails(id: mediaId)
             try Task.checkCancellation()
-            guard authStore.mediaLibrarySession.id == session.id else { return }
+            guard entryLoadState.isCurrent(request, sessionID: authStore.mediaLibrarySession.id) else { return }
             media = details
             entryLookupFailed = false
             do {
-                let entry = try await AniListClient.shared.fetchUserMediaEntry(
-                    mediaId: mediaId,
-                    username: session.id.username,
-                    accessToken: session.accessToken
-                )
-                try Task.checkCancellation()
-                guard authStore.mediaLibrarySession.id == session.id else { return }
-                userEntry = entry
+                let accepted = try await entryLoadState.load(
+                    request: request,
+                    currentSessionID: { authStore.mediaLibrarySession.id }
+                ) {
+                    try await AniListClient.shared.fetchUserMediaEntry(
+                        mediaId: mediaId,
+                        username: session.id.username,
+                        accessToken: session.accessToken
+                    )
+                }
+                guard accepted else { return }
                 loadedID = loadID
             } catch where error.isCancellation {
                 throw error
             } catch {
-                guard authStore.mediaLibrarySession.id == session.id else { return }
-                userEntry = nil
+                guard entryLoadState.isCurrent(request, sessionID: authStore.mediaLibrarySession.id) else { return }
                 entryLookupFailed = true
                 mutationError = error.localizedDescription
                 loadedID = loadID
             }
         } catch where error.isCancellation {
         } catch {
-            guard authStore.mediaLibrarySession.id == session.id else { return }
+            guard entryLoadState.isCurrent(request, sessionID: authStore.mediaLibrarySession.id) else { return }
             self.error = error.localizedDescription
             loadedID = loadID
         }
-        guard authStore.mediaLibrarySession.id == session.id else { return }
+        guard entryLoadState.isCurrent(request, sessionID: authStore.mediaLibrarySession.id) else { return }
         loading = false
     }
 
@@ -626,6 +672,7 @@ struct MediaDetailView: View {
               let type = details.type else {
             return
         }
+        entryLoadState.invalidateReads()
         let mutation = mediaLibraryStore.beginMutation(
             mediaID: mediaId,
             type: type,
@@ -664,6 +711,7 @@ struct MediaDetailView: View {
               let type = details.type else {
             return
         }
+        entryLoadState.invalidateReads()
         let mutation = mediaLibraryStore.beginMutation(
             mediaID: mediaId,
             type: type,
@@ -702,6 +750,7 @@ struct MediaDetailView: View {
               let type = details.type else {
             return
         }
+        entryLoadState.invalidateReads()
         let mutation = mediaLibraryStore.beginMutation(
             mediaID: mediaId,
             type: type,
@@ -727,13 +776,13 @@ struct MediaDetailView: View {
                 mutation: mutation
             )
             guard loadedID == activeMutation.loadID else { return }
-            userEntry = MediaDetailMutationResolution.afterDeletion(
+            entryLoadState.replace(with: MediaDetailMutationResolution.afterDeletion(
                 reconciliation: reconciliation,
                 canonicalEntry: mediaLibraryStore.entry(
                     mediaID: activeMutation.loadID.mediaID,
                     type: activeMutation.type
                 )
-            )
+            ))
             guard reconciliation.shouldApplyLocally else { return }
             showStatusModal = false
         } catch where error.isCancellation {
@@ -751,6 +800,7 @@ struct MediaDetailView: View {
               let type = details.type else {
             return
         }
+        entryLoadState.invalidateReads()
         let mutation = mediaLibraryStore.beginMutation(
             mediaID: mediaId,
             type: type,
@@ -793,6 +843,7 @@ struct MediaDetailView: View {
         let newProgress = max(0, entry.progress + delta)
         if let total, newProgress > total { return }
 
+        entryLoadState.invalidateReads()
         let mutation = mediaLibraryStore.beginMutation(
             mediaID: mediaId,
             type: type,
@@ -835,14 +886,14 @@ struct MediaDetailView: View {
             media: activeMutation.media
         )
         guard loadedID == activeMutation.loadID else { return false }
-        userEntry = MediaDetailMutationResolution.afterUpdate(
+        entryLoadState.replace(with: MediaDetailMutationResolution.afterUpdate(
             entry,
             reconciliation: reconciliation,
             canonicalEntry: mediaLibraryStore.entry(
                 mediaID: activeMutation.loadID.mediaID,
                 type: activeMutation.type
             )
-        )
+        ))
         return reconciliation.shouldApplyLocally
     }
 
@@ -870,7 +921,7 @@ enum MediaDetailMutationResolution {
         return canonicalEntry.map { makeUserEntry(from: $0) }
     }
 
-    private static func makeUserEntry(from entry: MediaListEntry) -> UserMediaEntry {
+    static func makeUserEntry(from entry: MediaListEntry) -> UserMediaEntry {
         UserMediaEntry(
             id: entry.id,
             status: entry.status,

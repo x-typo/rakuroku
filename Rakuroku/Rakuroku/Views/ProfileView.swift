@@ -11,7 +11,8 @@ struct ProfileView: View {
     @Environment(\.openURL) private var openURL
 
     @State private var user: AniListUser?
-    @State private var activities: [ListActivity] = []
+    @State private var activityStore = ProfileActivityStore()
+    @State private var profileRequestID = UUID()
     @State private var loading = true
     @State private var error: String?
     @State private var showManualTokenSheet = false
@@ -28,15 +29,15 @@ struct ProfileView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.background)
         .task(id: loadRequest) {
+            profileRequestID = UUID()
+            activityStore.reset()
             guard let loadRequest else {
                 user = nil
-                activities = []
                 loading = authStore.isAuthenticated
                 error = nil
                 return
             }
             user = nil
-            activities = []
             loading = true
             error = nil
             await loadData(for: loadRequest)
@@ -314,24 +315,24 @@ struct ProfileView: View {
                         .background(Theme.surfaceLight)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
+            }
 
-                if let authError = authStore.authError {
-                    Button { authStore.clearAuthError() } label: {
-                        VStack(spacing: 4) {
-                            Text(authError)
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(Theme.error)
-                            Text("Tap to dismiss")
-                                .font(.caption2)
-                                .foregroundStyle(Theme.textSecondary)
-                        }
-                        .padding(12)
-                        .frame(maxWidth: .infinity)
-                        .background(Theme.error.opacity(0.15))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+            if let authError = authStore.authError {
+                Button { authStore.clearAuthError() } label: {
+                    VStack(spacing: 4) {
+                        Text(authError)
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(Theme.error)
+                        Text("Tap to dismiss")
+                            .font(.caption2)
+                            .foregroundStyle(Theme.textSecondary)
                     }
-                    .padding(.horizontal, 16)
+                    .padding(12)
+                    .frame(maxWidth: .infinity)
+                    .background(Theme.error.opacity(0.15))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
+                .padding(.horizontal, 16)
             }
         }
         .padding(.vertical, 8)
@@ -344,12 +345,32 @@ struct ProfileView: View {
                 .font(.title3.bold())
                 .foregroundStyle(Theme.textPrimary)
 
-            if activities.isEmpty {
+            if activityStore.isLoading {
+                ProgressView("Loading activity…")
+                    .tint(Theme.primary)
+                    .foregroundStyle(Theme.textSecondary)
+            }
+
+            if let activityError = activityStore.error {
+                Text("Activity could not be refreshed. \(activityError)")
+                    .font(.caption)
+                    .foregroundStyle(Theme.error)
+                Button("Retry Activity") {
+                    guard let loadRequest, let user else { return }
+                    let requestID = profileRequestID
+                    Task { await loadActivities(userID: user.id, for: loadRequest, requestID: requestID) }
+                }
+                .buttonStyle(.bordered)
+                .tint(Theme.primary)
+            }
+
+            if activityStore.activities.isEmpty && activityStore.hasLoaded
+                && !activityStore.isLoading && activityStore.error == nil {
                 Text("No recent activities")
                     .font(.subheadline)
                     .foregroundStyle(Theme.textSecondary)
             } else {
-                ForEach(activities) { activity in
+                ForEach(activityStore.activities) { activity in
                     NavigationLink(value: MediaDetailDestination(mediaId: activity.media.id)) {
                         HStack(spacing: 10) {
                             AsyncCoverImage(url: activity.media.coverImage?.medium, width: 50, height: 70)
@@ -450,48 +471,59 @@ struct ProfileView: View {
     }
 
     private func loadData(for request: LoadRequest) async {
-        if user == nil { loading = true }
-        error = nil
         let session = authStore.mediaLibrarySession
         guard session.id == request.sessionID,
               session.accessToken == request.accessToken,
               authStore.isMediaLibraryIdentityResolved else {
             return
         }
+        let requestID = UUID()
+        profileRequestID = requestID
+        activityStore.invalidate()
+        if user == nil { loading = true }
+        error = nil
         do {
             let userData = try await AniListClient.shared.fetchAuthenticatedUser(
                 accessToken: request.accessToken
             )
-            guard authStore.isMediaLibraryIdentityResolved,
+            try Task.checkCancellation()
+            guard profileRequestID == requestID,
+                  authStore.isMediaLibraryIdentityResolved,
                   authStore.isCurrent(session) else {
                 return
             }
             user = userData
             loading = false
-            let loadedActivities = (try? await AniListClient.shared.fetchUserActivities(
-                userId: userData.id
-            )) ?? []
-            guard authStore.isMediaLibraryIdentityResolved,
-                  authStore.isCurrent(session) else {
-                return
-            }
-            activities = loadedActivities
+            await loadActivities(userID: userData.id, for: request, requestID: requestID)
         } catch let error as AniListError where error.isAuthenticationFailure {
+            guard profileRequestID == requestID else { return }
             guard authStore.logoutIfCurrent(
                 session,
                 authError: "AniList session expired. Sign in again."
             ) else {
+                if authStore.isCurrent(session) {
+                    self.error = authStore.authError ?? error.localizedDescription
+                    loading = false
+                }
                 return
             }
             user = nil
-            activities = []
+            activityStore.reset()
             self.error = nil
             loading = false
         } catch where error.isCancellation {
         } catch {
-            guard authStore.isCurrent(session) else { return }
+            guard profileRequestID == requestID, authStore.isCurrent(session) else { return }
             self.error = error.localizedDescription
             loading = false
+        }
+    }
+
+    private func loadActivities(userID: Int, for request: LoadRequest, requestID: UUID) async {
+        await activityStore.load(isCurrent: {
+            profileRequestID == requestID && loadRequest == request
+        }) {
+            try await AniListClient.shared.fetchUserActivities(userId: userID)
         }
     }
 

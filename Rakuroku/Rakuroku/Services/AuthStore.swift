@@ -10,7 +10,7 @@ protocol AuthPersistence {
     func loadUsername() -> String?
     func saveAccessToken(_ token: String) -> Bool
     func saveUsername(_ username: String)
-    func deleteAccessToken()
+    func deleteAccessToken() -> Bool
     func deleteUsername()
 }
 
@@ -45,7 +45,7 @@ private final class DefaultAuthPersistence: AuthPersistence {
         UserDefaults.standard.set(username, forKey: usernameKey)
     }
 
-    func deleteAccessToken() {
+    func deleteAccessToken() -> Bool {
         KeychainHelper.delete(key: tokenKey)
     }
 
@@ -137,14 +137,15 @@ final class AuthStore {
 
     @discardableResult
     func recordMediaLibraryIdentityResolutionFailure(
-        for session: MediaLibrarySession
+        for session: MediaLibrarySession,
+        message: String? = nil
     ) -> Bool {
         guard session.accessToken != nil,
               isCurrent(session),
               !isMediaLibraryIdentityResolved else {
             return false
         }
-        mediaLibraryIdentityResolutionError =
+        mediaLibraryIdentityResolutionError = message ??
             "Couldn't verify your AniList account. Check your connection and try again."
         return true
     }
@@ -241,9 +242,13 @@ final class AuthStore {
         }
     }
 
-    func logout(authError message: String? = nil) {
+    @discardableResult
+    func logout(authError message: String? = nil) -> Bool {
+        guard persistence.deleteAccessToken() else {
+            authError = "Couldn't remove your saved token securely. Try signing out again."
+            return false
+        }
         let identityChanged = accessToken != nil || username != defaultUsername
-        persistence.deleteAccessToken()
         accessToken = nil
         username = defaultUsername
         isMediaLibraryIdentityResolved = true
@@ -253,6 +258,7 @@ final class AuthStore {
         }
         authError = message
         persistence.deleteUsername()
+        return true
     }
 
     @discardableResult
@@ -261,8 +267,7 @@ final class AuthStore {
         authError message: String? = nil
     ) -> Bool {
         guard session.accessToken != nil, isCurrent(session) else { return false }
-        logout(authError: message)
-        return true
+        return logout(authError: message)
     }
 
     @discardableResult

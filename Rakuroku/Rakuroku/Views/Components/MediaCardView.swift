@@ -44,7 +44,7 @@ struct MediaCardView: View {
     }
 
     private var scoreText: String? {
-        entry.score > 0 ? "★ \(Int(entry.score))" : nil
+        entry.score > 0 ? "★ \(Formatters.userScore(entry.score))" : nil
     }
 
     private var scoreColor: Color {

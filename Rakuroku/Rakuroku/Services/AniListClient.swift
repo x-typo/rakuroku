@@ -1,14 +1,18 @@
 import Foundation
 
 enum AniListError: LocalizedError {
+    case invalidScore
     case rateLimited
+    case serviceUnavailable
     case apiError(Int)
     case graphQLError(String)
     case networkError(Error)
 
     var errorDescription: String? {
         switch self {
+        case .invalidScore: "Score must be between 0 and 10."
         case .rateLimited: "Too many requests. Please try again shortly."
+        case .serviceUnavailable: "AniList has temporarily disabled its API due to stability issues. Please try again later."
         case .apiError(let code): "AniList API error: \(code)"
         case .graphQLError(let msg): msg
         case .networkError(let err): err.localizedDescription
@@ -46,8 +50,15 @@ actor AniListClient {
     private let endpoint = URL(string: "https://graphql.anilist.co")!
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
+    private let transport: @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
-    private init() {}
+    init(
+        transport: @escaping @Sendable (URLRequest) async throws -> (Data, URLResponse) = {
+            try await URLSession.shared.data(for: $0)
+        }
+    ) {
+        self.transport = transport
+    }
 
     // MARK: - Shared Response Types
 
@@ -75,12 +86,24 @@ actor AniListClient {
         let payload = GraphQLRequest(query: query, variables: variables)
         request.httpBody = try encoder.encode(payload)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await transport(request)
 
         let decodedResponse = Result { try decoder.decode(GraphQLResponse<T>.self, from: data) }
 
+        let httpStatus = (response as? HTTPURLResponse)?.statusCode
+        if httpStatus == 429 { throw AniListError.rateLimited }
+        // AniList reports this service outage as 403, which must not invalidate a saved session.
+        if case .success(let gqlResponse) = decodedResponse,
+           let error = gqlResponse.errors?.first,
+           httpStatus == 403 || error.status == 403,
+           error.message.localizedCaseInsensitiveContains("AniList API has been temporarily disabled") {
+            throw AniListError.serviceUnavailable
+        }
+
         if let http = response as? HTTPURLResponse, !((200...299).contains(http.statusCode)) {
-            if http.statusCode == 429 { throw AniListError.rateLimited }
+            if http.statusCode == 401 || http.statusCode == 403 {
+                throw AniListError.apiError(http.statusCode)
+            }
             if case .success(let gqlResponse) = decodedResponse, let first = gqlResponse.errors?.first {
                 if let status = first.status {
                     if status == 429 { throw AniListError.rateLimited }
@@ -341,10 +364,15 @@ actor AniListClient {
     }
 
     func updateScore(mediaId: Int, score: Double, accessToken: String) async throws -> UserMediaEntry {
+        guard score.isFinite, (0...10).contains(score) else {
+            throw AniListError.invalidScore
+        }
+        // scoreRaw is independent of the account's preferred scoring format.
+        let rawScore = Int((score * 10).rounded())
         struct Response: Decodable { let SaveMediaListEntry: UserMediaEntry }
         let result = try await execute(
             query: Mutations.updateScore,
-            variables: ["mediaId": AnyCodable(mediaId), "score": AnyCodable(score)],
+            variables: ["mediaId": AnyCodable(mediaId), "scoreRaw": AnyCodable(rawScore)],
             accessToken: accessToken,
             as: Response.self
         )
@@ -397,7 +425,7 @@ private enum Queries {
         lists {
           status
           entries {
-            id status progress score updatedAt
+            id status progress score(format: POINT_10_DECIMAL) updatedAt
             media {
               id isAdult title { romaji english native }
               coverImage { large medium }
@@ -437,7 +465,7 @@ private enum Queries {
     static let userMediaStatus = """
     query ($userName: String, $mediaId: Int) {
       MediaList(userName: $userName, mediaId: $mediaId) {
-        id status score progress updatedAt
+        id status score(format: POINT_10_DECIMAL) progress updatedAt
       }
     }
     """
@@ -553,19 +581,19 @@ private enum Queries {
 private enum Mutations {
     static let updateProgress = """
     mutation ($mediaId: Int, $progress: Int) {
-      SaveMediaListEntry(mediaId: $mediaId, progress: $progress) { id status score progress updatedAt }
+      SaveMediaListEntry(mediaId: $mediaId, progress: $progress) { id status score(format: POINT_10_DECIMAL) progress updatedAt }
     }
     """
 
     static let updateScore = """
-    mutation ($mediaId: Int, $score: Float) {
-      SaveMediaListEntry(mediaId: $mediaId, score: $score) { id status score progress updatedAt }
+    mutation ($mediaId: Int, $scoreRaw: Int) {
+      SaveMediaListEntry(mediaId: $mediaId, scoreRaw: $scoreRaw) { id status score(format: POINT_10_DECIMAL) progress updatedAt }
     }
     """
 
     static let updateStatus = """
     mutation ($mediaId: Int, $status: MediaListStatus) {
-      SaveMediaListEntry(mediaId: $mediaId, status: $status) { id status score progress updatedAt }
+      SaveMediaListEntry(mediaId: $mediaId, status: $status) { id status score(format: POINT_10_DECIMAL) progress updatedAt }
     }
     """
 
@@ -577,7 +605,7 @@ private enum Mutations {
 
     static let addToList = """
     mutation ($mediaId: Int, $status: MediaListStatus) {
-      SaveMediaListEntry(mediaId: $mediaId, status: $status) { id status score progress updatedAt }
+      SaveMediaListEntry(mediaId: $mediaId, status: $status) { id status score(format: POINT_10_DECIMAL) progress updatedAt }
     }
     """
 }

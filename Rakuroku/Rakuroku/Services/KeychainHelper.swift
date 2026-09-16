@@ -2,15 +2,25 @@ import Foundation
 import Security
 
 enum KeychainHelper {
-    static func save(key: String, data: Data) -> Bool {
-        delete(key: key)
+    static func save(
+        key: String,
+        data: Data,
+        update: (CFDictionary, CFDictionary) -> OSStatus = { SecItemUpdate($0, $1) },
+        add: (CFDictionary) -> OSStatus = { SecItemAdd($0, nil) }
+    ) -> Bool {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
+        ]
+        let attributes: [String: Any] = [
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
         ]
-        return SecItemAdd(query as CFDictionary, nil) == errSecSuccess
+        let status = update(query as CFDictionary, attributes as CFDictionary)
+        guard status == errSecItemNotFound else { return status == errSecSuccess }
+
+        return add(query.merging(attributes) { _, newValue in newValue } as CFDictionary)
+            == errSecSuccess
     }
 
     static func load(key: String) -> Data? {
@@ -26,12 +36,16 @@ enum KeychainHelper {
     }
 
     @discardableResult
-    static func delete(key: String) -> Bool {
+    static func delete(
+        key: String,
+        remove: (CFDictionary) -> OSStatus = { SecItemDelete($0) }
+    ) -> Bool {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
         ]
-        return SecItemDelete(query as CFDictionary) == errSecSuccess
+        let status = remove(query as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
     }
 
     static func saveString(key: String, value: String) -> Bool {
